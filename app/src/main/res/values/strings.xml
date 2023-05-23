@@ -12,7 +12,7 @@
     <string name="default_client_address">127.0.0.1</string>
     <string name="default_server_address">192.168.208.20</string>
     <string name="default_multicast_address">239.255.42.99</string>
-    <string name="float_button_text">Click to send a E-mail</string>
+    <string name="float_button_text">Click to visit repository page</string>
     <string name="connect">Connect to server</string>
     <string name="next">Start client</string>
     <string name="action_about">About</string>
