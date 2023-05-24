@@ -43,7 +43,7 @@ class MainActivity : AppCompatActivity() {
         appBarConfiguration = AppBarConfiguration(navController.graph)
         setupActionBarWithNavController(navController, appBarConfiguration)
 
-        binding.fab.setOnClickListener { _ ->
+        binding.fab.setOnClickListener {
             val url = "https://github.com/nicholaslu/MobileNatNet"
             val i = Intent(Intent.ACTION_VIEW)
             i.data = Uri.parse(url)
@@ -77,6 +77,4 @@ class MainActivity : AppCompatActivity() {
         return navController.navigateUp(appBarConfiguration)
                 || super.onSupportNavigateUp()
     }
-
-
 }

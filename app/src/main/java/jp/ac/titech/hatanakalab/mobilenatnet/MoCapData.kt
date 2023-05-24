@@ -74,25 +74,23 @@ private fun testHash2(testName: String, testHashStr: String, testObject: Any?, r
         retValue = kFail
         outStr2 = "${indentString}ERROR: testObject was None"
     } else {
-        if (testObject != null) {
-            try {
-                val method = testObject.javaClass.getMethod("getAsString", String::class.java, Int::class.java)
-                val objOutStr = method.invoke(testObject, "  ", 0)
-                objOutStr as String
-                val objOutHashStr = sha1Digest(objOutStr)
-                if (testHashStr == objOutHashStr) {
-                    outStr = "PASS"
-                    retValue = kPass
-                } else {
-                    outStr2 += "%s%s test_hash_str != out_hash_str\n".format(indentString, testName)
-                    outStr2 += "%stest_hash_str=%s\n".format(indentString, testHashStr)
-                    outStr2 += "%sobj_out_hash_str=%s\n".format(indentString, objOutHashStr)
-                    outStr2 += "%sobj_out_str =\n%s".format(indentString, objOutStr)
-                    retValue = kFail
-                }
-            } catch (e: Exception) {
-                throw e
+        try {
+            val method = testObject.javaClass.getMethod("getAsString", String::class.java, Int::class.java)
+            val objOutStr = method.invoke(testObject, "  ", 0)
+            objOutStr as String
+            val objOutHashStr = sha1Digest(objOutStr)
+            if (testHashStr == objOutHashStr) {
+                outStr = "PASS"
+                retValue = kPass
+            } else {
+                outStr2 += "%s%s test_hash_str != out_hash_str\n".format(indentString, testName)
+                outStr2 += "%stest_hash_str=%s\n".format(indentString, testHashStr)
+                outStr2 += "%sobj_out_hash_str=%s\n".format(indentString, objOutHashStr)
+                outStr2 += "%sobj_out_str =\n%s".format(indentString, objOutStr)
+                retValue = kFail
             }
+        } catch (e: Exception) {
+            throw e
         }
 
     }
@@ -213,7 +211,7 @@ class MarkerSetData {
 }
 
 class RigidBodyMarker {
-    var pos = arrayListOf<Double>(0.0, 0.0, 0.0)
+    var pos = arrayListOf(0.0, 0.0, 0.0)
     var idNum = 0
     var size = 0
     var error = 0.0

@@ -10,11 +10,18 @@
         android:layout_height="match_parent"
         android:padding="16dp">
 
+        <TextView
+            android:id="@+id/local_ip_hint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:layout_constraintTop_toTopOf="parent"
+            android:text="@string/client_address"/>
+
         <EditText
             android:id="@+id/local_ip_input"
-            android:layout_width="@dimen/address_width"
-            android:layout_height="@dimen/address_height"
-            app:layout_constraintTop_toTopOf="parent"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:layout_constraintTop_toBottomOf="@id/local_ip_hint"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             android:hint="@string/set_client_address"
@@ -25,11 +32,18 @@
             android:imeOptions="actionNext"
             android:autofillHints="" />
 
+        <TextView
+            android:id="@+id/server_ip_hint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:layout_constraintTop_toBottomOf="@id/local_ip_input"
+            android:text="@string/server_address"/>
+
         <EditText
             android:id="@+id/server_ip_input"
-            android:layout_width="@dimen/address_width"
-            android:layout_height="@dimen/address_height"
-            app:layout_constraintTop_toBottomOf="@id/local_ip_input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:layout_constraintTop_toBottomOf="@id/server_ip_hint"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             android:hint="@string/set_server_address"
@@ -40,11 +54,18 @@
             android:imeOptions="actionNext"
             android:autofillHints="" />
 
+        <TextView
+            android:id="@+id/multicast_ip_hint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:layout_constraintTop_toBottomOf="@id/server_ip_input"
+            android:text="@string/multicast_address"/>
+
         <EditText
             android:id="@+id/multicast_ip_input"
-            android:layout_width="@dimen/address_width"
-            android:layout_height="@dimen/address_height"
-            app:layout_constraintTop_toBottomOf="@id/server_ip_input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:layout_constraintTop_toBottomOf="@id/multicast_ip_hint"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             android:hint="@string/set_multicast_address"

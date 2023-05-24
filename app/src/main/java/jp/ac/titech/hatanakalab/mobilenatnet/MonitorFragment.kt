@@ -1,16 +1,20 @@
 package jp.ac.titech.hatanakalab.mobilenatnet
 
 import NatNetClient
+import android.os.AsyncTask
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
-import androidx.fragment.app.Fragment
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import androidx.fragment.app.Fragment
 import androidx.fragment.app.setFragmentResultListener
 import com.google.android.material.snackbar.Snackbar
 import jp.ac.titech.hatanakalab.mobilenatnet.databinding.FragmentMonitorBinding
+
 
 /**
  * A simple [Fragment] subclass as the second destination in the navigation.
@@ -45,11 +49,23 @@ class MonitorFragment : Fragment() {
 
     }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
         binding.buttonStart.setOnClickListener {
-            runClient(natNetSetting)
+            val natNetClientThread = Thread {
+                val streamingClient = NatNetClient()
+                streamingClient.localIpAddress = natNetSetting.clientAddress
+                streamingClient.serverIpAddress = natNetSetting.serverAddress
+                streamingClient.useMulticast = natNetSetting.useMulticast
+                streamingClient.multicastAddress = natNetSetting.multicastAddress
+                streamingClient.rigidBodyListener =
+                    { id: Int, pos: ArrayList<Double>, rot: ArrayList<Double> ->
+                        rigidBodyText.getRigidBody(id, pos, rot)
+                    }
+                streamingClient.run()
+            }.start()
             Snackbar.make(
                 view,
                 "Connect with IP setting ${natNetSetting.clientAddress}, ${natNetSetting.serverAddress}, ${natNetSetting.multicastAddress}, use multicast: ${natNetSetting.useMulticast}",
@@ -61,32 +77,6 @@ class MonitorFragment : Fragment() {
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
-    }
-
-    @OptIn(ExperimentalUnsignedTypes::class)
-    fun runClient(natNetSetting: MainActivity.NatNetSetting) {
-        val streamingClient = NatNetClient()
-        streamingClient.setClientAddress(natNetSetting.clientAddress)
-        streamingClient.setServerAddress(natNetSetting.serverAddress)
-        streamingClient.useMulticast = natNetSetting.useMulticast
-        streamingClient.multicastAddress = natNetSetting.multicastAddress
-
-        streamingClient.newFrameListener = (object : NatNetClient.NewFrameListener {
-            override fun onReceive(dataDict: MutableMap<String, Any>) {
-                super.onReceive(dataDict)
-            }
-        })
-        streamingClient.rigidBodyListener = (object : NatNetClient.RigidBodyListener {
-            override fun onReceive(newId: Int, pos: ArrayList<Double>, rot: ArrayList<Double>) {
-                rigidBodyText.getRigidBody(newId, pos, rot)
-//                val text = "id: $newId, pos: $pos, rot: $rot"
-//                Log.d(tag, text)
-            }
-        })
-
-        val running = streamingClient.run()
-        Log.d(tag, "running: $running")
-        printConfiguration(streamingClient)
     }
 
     @OptIn(ExperimentalUnsignedTypes::class)
@@ -153,10 +143,14 @@ class MonitorFragment : Fragment() {
         }
 
         fun getRigidBody(newId: Int, pos: ArrayList<Double>, rot: ArrayList<Double>) {
-            rigidBodyMap[newId]?.pos = pos
-            rigidBodyMap[newId]?.rot = rot
-            if (newId !in rigidBodyMap.keys) {
-                rigidBodyMap[newId]?.name = getNameFromId(newId)
+            if (newId in rigidBodyMap.keys) {
+                rigidBodyMap[newId]?.pos = pos
+                rigidBodyMap[newId]?.rot = rot
+                Log.d("NatNet", "Update map")
+            } else if (newId !in rigidBodyMap.keys) {
+                val rigidBodyData = RigidBodyData(newId, getNameFromId(newId), pos, rot)
+                rigidBodyMap[newId] = rigidBodyData
+                Log.d("NatNet", "Create map, newId: $newId, dict: ${rigidBodyMap.keys}")
             }
             showAsText()
         }
@@ -170,19 +164,20 @@ class MonitorFragment : Fragment() {
             for (i in rigidBodyMap.keys) {
                 val data = rigidBodyMap[i]
                 outStr += data?.let {
-                    "%s, id: %2d position: %2.2f, %2.2f, %2.2f rotation: %2.2f, %2.2f, %2.2f\n".format(
-                        it.name,
-                        it.id,
-                        it.pos[0],
-                        it.pos[1],
-                        it.pos[2],
-                        it.rot[0],
-                        it.rot[1],
-                        it.rot[2]
+                    "%s, id: %2d, position: %2.2f, %2.2f, %2.2f, rotation: %2.2f, %2.2f, %2.2f\n".format(
+                        it.name, it.id,
+                        it.pos[0], it.pos[1], it.pos[2],
+                        it.rot[0], it.rot[1], it.rot[2]
                     )
                 }
             }
-            text.text = outStr
+            Log.d("NatNet", outStr.length.toString())
+            val mainHandler = Handler(Looper.getMainLooper())
+            try {
+                mainHandler.post { text.text = outStr }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 }

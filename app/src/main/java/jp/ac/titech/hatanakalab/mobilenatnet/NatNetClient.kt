@@ -7,11 +7,10 @@ import java.nio.ByteOrder
 import java.nio.channels.IllegalBlockingModeException
 import java.util.*
 import kotlin.math.min
-import kotlin.system.exitProcess
 
 fun trace(vararg args: Any) {
     //uncomment the one you want to use
-//    println(Array(args.size) { args[it].toString() }.joinToString(separator = ""))
+    println(Array(args.size) { args[it].toString() }.joinToString(separator = ""))
 //    ;
 }
 
@@ -19,7 +18,7 @@ fun trace(vararg args: Any) {
 fun traceDd(vararg args: Any) {
     //uncomment the one you want to use
     println(Array(args.size){args[it].toString()}.joinToString(separator = ""))
-    ;
+//    ;
 }
 
 //Used for MoCap Frame Data functions
@@ -185,7 +184,7 @@ class DoubleValue {
     }
 }
 
-//NNIntValue = struct.Struct( '<I') //todo later
+//NNIntValue = struct.Struct( '<I') //todo finish here later
 class NNIntValue {
     companion object {
 //        fun pack(data: UInt): ByteArray {
@@ -250,7 +249,7 @@ class NatNetClient {
         }
 
     // Change this value to the IP address of the NatNet server.
-    var serverIpAddress = "192.168.208.20"
+    var serverIpAddress = "127.0.0.1"
 
     // Change this value to the IP address of your local network interface
     var localIpAddress = "127.0.0.1"
@@ -272,8 +271,8 @@ class NatNetClient {
         }
 
     // Set this to a callback method of your choice to receive per-rigid-body data at each frame.
-    lateinit var rigidBodyListener: RigidBodyListener
-    lateinit var newFrameListener: NewFrameListener
+    lateinit var rigidBodyListener: (newId: Int, pos: ArrayList<Double>, rot: ArrayList<Double>) -> Unit
+    lateinit var newFrameListener: (dataDict: MutableMap<String, Any>) -> Unit
 
     // Set Application Name
     private var applicationName = "Not Set"
@@ -314,18 +313,6 @@ class NatNetClient {
     val NAT_KEEPALIVE = 10
     val NAT_UNRECOGNIZED_REQUEST = 100
     val NAT_UNDEFINED = 999999.9999
-
-    interface RigidBodyListener {
-        fun onReceive(newId: Int, pos: ArrayList<Double>, rot: ArrayList<Double>) {
-            //
-        }
-    }
-
-    interface NewFrameListener {
-        fun onReceive(dataDict: MutableMap<String, Any>) {
-            //
-        }
-    }
 
     fun setClientAddress(newLocalIpAddress: String) {
         if (!isLocked) {
@@ -484,9 +471,7 @@ class NatNetClient {
             // Multicast case
             val result = MulticastSocket(port)
             result.reuseAddress = true
-//            result.setOption(StandardSocketOptions.SO_REUSEADDR, true)
             try {
-//                result.bind(InetSocketAddress(port))
                 val mcastaddr = InetSocketAddress(multicastAddress, port)
                 val netIf = NetworkInterface.getByName(localIpAddress)
                 result.joinGroup(mcastaddr, netIf)
@@ -505,8 +490,6 @@ class NatNetClient {
             // Unicast case
             val result = DatagramSocket(null)
             result.reuseAddress = true
-//            result.setOption(StandardSocketOptions.SO_REUSEADDR, true)
-//            result.bind(InetSocketAddress(InetAddress.getByName(localIpAddress), port))
             try {
                 result.bind(InetSocketAddress(InetAddress.getByName(""), 0)) //todo check getByName
             } catch (e: SocketException) {
@@ -531,14 +514,12 @@ class NatNetClient {
         var offset = 0
 
         // ID (4 bytes)
-//        newId = int.fromBytes(data.sliceArray(offset until offset+4), byteorder = 'little')
         var newId = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
         offset += 4
 
         traceMf("RB: %3d ID: %3d".format(rbNum, newId))
 
         // Position and orientation
-//        pos = Vector3.unpack(data.sliceArray(offset until offset+12))
         var pos = Vector3.unpack(data.sliceArray(offset until offset + 12))
         offset += 12
         traceMf("\tPosition    : [%3.2f, %3.2f, %3.2f]".format(pos[0], pos[1], pos[2]))
@@ -551,7 +532,7 @@ class NatNetClient {
 
         // Send information to any listener.
         if (::rigidBodyListener.isInitialized) {
-            rigidBodyListener.onReceive(newId, pos, rot) //todo check listener
+            rigidBodyListener.invoke(newId, pos, rot)
         }
 
         // RB Marker Data ( Before version 3.0.  After Version 3.0 Marker data is in description )
@@ -987,7 +968,6 @@ class NatNetClient {
     private fun unpackMocapData(data: ByteArray, packetSize: Int, major: Int, minor: Int): Pair<Int, MoCapData> {
         val mocapData = MoCapData()
         traceMf("MoCap Frame Begin\n-----------------")
-//        val data = memoryview( data )
         var offset = 0
 
         //Frame Prefix Data
@@ -1091,7 +1071,7 @@ class NatNetClient {
             dataDict["timestamp"] = timestamp
             dataDict["isRecording"] = isRecording
             dataDict["trackedModelsChanged"] = trackedModelsChanged
-            newFrameListener.onReceive(dataDict)
+            newFrameListener.invoke(dataDict)
         }
         traceMf("MoCap Frame End\n-----------------")
         return Pair(offset, mocapData)
@@ -1214,7 +1194,7 @@ class NatNetClient {
         //Name
         val (name, _, _) = bytesPartition(data.sliceArray(offset until data.size), "\u0000")
         offset += name.length + 1
-        skeletonDesc.setName(name.toString())
+        skeletonDesc.setName(name)
         traceDd("Name : %s".format(name))
 
         //ID
@@ -1259,7 +1239,7 @@ class NatNetClient {
             // Serial Number
             val (serialNumber, _, _) = bytesPartition(data.sliceArray(offset until data.size), "\u0000")
             offset += serialNumber.length + 1
-            fpDesc.setSerialNumber(serialNumber.toString())
+            fpDesc.setSerialNumber(serialNumber)
             traceDd("\tSerial Number : ", serialNumber)
 
             // Dimensions
@@ -1344,7 +1324,7 @@ class NatNetClient {
                 )
                 offset += channelName.length + 1
                 traceDd("\tChannel Name %3d: %s".format(i, channelName))
-                fpDesc.addChannelName(channelName.toString())
+                fpDesc.addChannelName(channelName)
             }
             traceDd("unpackForcePlate processed ", offset, " bytes")
             return Pair(offset, fpDesc)
@@ -1382,7 +1362,7 @@ class NatNetClient {
             offset += 4
             traceDd("Channel Data Type : ", channelDataType)
 
-            val deviceDesc = DeviceDescription(newId, name.toString(), serialNumber.toString(), deviceType, channelDataType)
+            val deviceDesc = DeviceDescription(newId, name, serialNumber, deviceType, channelDataType)
 
             // Number of Channels int
             val numChannels = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
@@ -1396,7 +1376,7 @@ class NatNetClient {
                     "\u0000"
                 )
                 offset += channelName.length + 1
-                deviceDesc.addChannelName(channelName.toString())
+                deviceDesc.addChannelName(channelName)
                 traceDd("\tChannel ", i, " Name : ", channelName)
             }
             traceDd("unpackDeviceDescription processed ", offset, " bytes")
@@ -1431,7 +1411,7 @@ class NatNetClient {
         )
         traceDd("unpackCameraDescription processed %3d bytes".format(offset))
 
-        val cameraDesc = CameraDescription(name.toString(), position, orientation)
+        val cameraDesc = CameraDescription(name, position, orientation)
         return Pair(offset, cameraDesc)
     }
 
@@ -1463,8 +1443,6 @@ class NatNetClient {
                     )
                     offset += offsetTmp
                     dataDescs.addData(dataTmp)
-                    traceDd("\t$i datasets processed of $datasetCount")
-                    traceDd("\t $offset bytes processed of $packetSize")
                 }
 
                 1 -> {
@@ -1476,8 +1454,6 @@ class NatNetClient {
                     )
                     offset += offsetTmp
                     dataDescs.addData(dataTmp)
-                    traceDd("\t$i datasets processed of $datasetCount")
-                    traceDd("\t $offset bytes processed of $packetSize")
                 }
 
                 2 -> {
@@ -1489,8 +1465,6 @@ class NatNetClient {
                     )
                     offset += offsetTmp
                     dataDescs.addData(dataTmp)
-                    traceDd("\t$i datasets processed of $datasetCount")
-                    traceDd("\t $offset bytes processed of $packetSize")
                 }
 
                 3 -> {
@@ -1502,9 +1476,6 @@ class NatNetClient {
                     )
                     offset += offsetTmp
                     dataDescs.addData(dataTmp)
-                    traceDd("\t$i datasets processed of $datasetCount")
-                    traceDd("\t $offset bytes processed of $packetSize")
-
                 }
 
                 4 -> {
@@ -1516,8 +1487,6 @@ class NatNetClient {
                     )
                     offset += offsetTmp
                     dataDescs.addData(dataTmp)
-                    traceDd("\t$i datasets processed of $datasetCount")
-                    traceDd("\t $offset bytes processed of $packetSize")
                 }
 
                 5 -> {
@@ -1529,16 +1498,9 @@ class NatNetClient {
                     )
                     offset += offsetTmp
                     dataDescs.addData(dataTmp)
-                    traceDd("\t$i datasets processed of $datasetCount")
-                    traceDd("\t $offset bytes processed of $packetSize")
-
                 }
 
                 else -> {
-                    println(data.sliceArray(offset until offset + 4))
-                    for (b in data.sliceArray(offset until offset + 4)){
-                        println(b)
-                    } //todo remove
                     println("Type: $dataType UNKNOWN")
                     println("ERROR: Type decode failure")
                     println("\t $(i + 1)  datasets processed of  $datasetCount")
@@ -1547,6 +1509,8 @@ class NatNetClient {
                     return Pair(offset, null)
                 }
             }
+            traceDd("\t$i datasets processed of $datasetCount")
+            traceDd("\t $offset bytes processed of $packetSize")
         }
         return Pair(offset, dataDescs)
     }
@@ -1562,7 +1526,7 @@ class NatNetClient {
             data.sliceArray(offset until offset + 256),
             "\u0000"
         )
-        applicationName = applicationNameTmp.toString()
+        applicationName = applicationNameTmp
         offset += 256
         // Server Version info
 //        serverVersion = struct.unpack( 'BBBB', data.sliceArray(offset until offset+4) )
@@ -1870,10 +1834,8 @@ class NatNetClient {
         val datagramPacket = DatagramPacket(data, data.size, address)
         return try {
             inSocket.send(datagramPacket)
-            println("send request of size ${data.size}")
             data.size
         } catch (e: Exception) {
-            println("send request failed, ${e}")
             -1
         }
     }
