@@ -273,6 +273,7 @@ class NatNetClient {
     // Set this to a callback method of your choice to receive per-rigid-body data at each frame.
     lateinit var rigidBodyListener: (newId: Int, pos: ArrayList<Double>, rot: ArrayList<Double>) -> Unit
     lateinit var newFrameListener: (dataDict: MutableMap<String, Any>) -> Unit
+    lateinit var dataDescriptionsListener: (dataDescs: DataDescriptions) -> Unit
 
     // Set Application Name
     private var applicationName = "Not Set"
@@ -1511,6 +1512,10 @@ class NatNetClient {
             }
             traceDd("\t$i datasets processed of $datasetCount")
             traceDd("\t $offset bytes processed of $packetSize")
+        }
+        // Send information to any listener.
+        if (::dataDescriptionsListener.isInitialized) {
+            dataDescriptionsListener.invoke(dataDescs)
         }
         return Pair(offset, dataDescs)
     }

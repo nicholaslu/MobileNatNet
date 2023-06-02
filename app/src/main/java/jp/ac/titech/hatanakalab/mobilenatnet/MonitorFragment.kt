@@ -1,7 +1,7 @@
 package jp.ac.titech.hatanakalab.mobilenatnet
 
+import DataDescriptions
 import NatNetClient
-import android.os.AsyncTask
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -28,6 +28,7 @@ class MonitorFragment : Fragment() {
     private val binding get() = _binding!!
     private lateinit var natNetSetting: MainActivity.NatNetSetting
     private val rigidBodyText = RigidBodyText()
+    private var rigidBodyNameMap = mutableMapOf<Int, String>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -60,10 +61,13 @@ class MonitorFragment : Fragment() {
                 streamingClient.serverIpAddress = natNetSetting.serverAddress
                 streamingClient.useMulticast = natNetSetting.useMulticast
                 streamingClient.multicastAddress = natNetSetting.multicastAddress
-                streamingClient.rigidBodyListener =
-                    { id: Int, pos: ArrayList<Double>, rot: ArrayList<Double> ->
+                streamingClient.rigidBodyListener = { id: Int, pos: ArrayList<Double>, rot: ArrayList<Double> ->
                         rigidBodyText.getRigidBody(id, pos, rot)
-                    }
+                }
+                streamingClient.dataDescriptionsListener = { dataDescs: DataDescriptions ->
+                    dataDescs.rigidBodyList.forEach { rigidBodyNameMap[it.idNum] = it.szName }
+                    rigidBodyText.rigidBodyNameMap = rigidBodyNameMap
+                }
                 streamingClient.run()
             }.start()
             Snackbar.make(
@@ -136,6 +140,7 @@ class MonitorFragment : Fragment() {
 
     class RigidBodyText {
         private var rigidBodyMap = mutableMapOf<Int, RigidBodyData>()
+        var rigidBodyNameMap = mutableMapOf<Int, String>()
         lateinit var text: TextView
 
         fun bindTextView(textView: TextView) {
@@ -154,9 +159,8 @@ class MonitorFragment : Fragment() {
             }
             showAsText()
         }
-
         private fun getNameFromId(id: Int): String {
-            return id.toString()
+            return rigidBodyNameMap[id] ?: "Unknown"
         }
 
         private fun showAsText() {
