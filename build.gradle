@@ -9,12 +9,9 @@ apply plugin: 'com.android.library'
 apply plugin: 'org.jetbrains.kotlin.android'
 
 android {
-//    namespace 'jp.ac.titech.e.sc.hfg.mobilenatnet'
-
     compileSdkVersion 33
 
     defaultConfig {
-//        applicationId 'jp.ac.titech.e.sc.hfg.mobilenatnet'
         minSdkVersion 23
         targetSdkVersion 33
         versionCode 1
