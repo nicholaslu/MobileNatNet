@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <dimen name="address_width">160dp</dimen>
-    <dimen name="address_height">52dp</dimen>
-    <dimen name="monitor_margin">32dp</dimen>
-</resources>
