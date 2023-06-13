@@ -1,4 +1,4 @@
-package jp.ac.titech.hatanakalab.mobilenatnet
+package jp.ac.titech.e.sc.hfg.mobilenatnet
 
 import DataDescriptions
 import NatNetClient
@@ -13,7 +13,8 @@ import android.widget.TextView
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.setFragmentResultListener
 import com.google.android.material.snackbar.Snackbar
-import jp.ac.titech.hatanakalab.mobilenatnet.databinding.FragmentMonitorBinding
+import jp.ac.titech.e.sc.hfg.mobilenatnet.R
+import jp.ac.titech.e.sc.hfg.mobilenatnet.databinding.FragmentMonitorBinding
 
 
 /**

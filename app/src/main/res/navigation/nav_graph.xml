@@ -7,7 +7,7 @@
 
     <fragment
         android:id="@+id/monitorFragment"
-        android:name="jp.ac.titech.hatanakalab.mobilenatnet.MonitorFragment"
+        android:name="jp.ac.titech.e.sc.hfg.mobilenatnet.MonitorFragment"
         android:label="@string/monitor_fragment_label"
         tools:layout="@layout/fragment_monitor">
         <action
@@ -16,7 +16,7 @@
     </fragment>
     <fragment
         android:id="@+id/settingFragment"
-        android:name="jp.ac.titech.hatanakalab.mobilenatnet.SettingFragment"
+        android:name="jp.ac.titech.e.sc.hfg.mobilenatnet.SettingFragment"
         android:label="@string/setting_fragment_label"
         tools:layout="@layout/fragment_setting">
         <action

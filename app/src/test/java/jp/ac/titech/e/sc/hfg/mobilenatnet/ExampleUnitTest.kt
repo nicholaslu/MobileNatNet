@@ -1,4 +1,4 @@
-package jp.ac.titech.hatanakalab.mobilenatnet
+package jp.ac.titech.e.sc.hfg.mobilenatnet
 
 import org.junit.Test
 

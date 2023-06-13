@@ -1,4 +1,4 @@
-package jp.ac.titech.hatanakalab.mobilenatnet
+package jp.ac.titech.e.sc.hfg.mobilenatnet
 
 import android.content.Intent
 import android.net.Uri
@@ -13,7 +13,8 @@ import androidx.navigation.ui.AppBarConfiguration
 import androidx.navigation.ui.navigateUp
 import androidx.navigation.ui.setupActionBarWithNavController
 import com.google.android.material.snackbar.Snackbar
-import jp.ac.titech.hatanakalab.mobilenatnet.databinding.ActivityMainBinding
+import jp.ac.titech.e.sc.hfg.mobilenatnet.R
+import jp.ac.titech.e.sc.hfg.mobilenatnet.databinding.ActivityMainBinding
 import kotlinx.parcelize.Parcelize
 
 

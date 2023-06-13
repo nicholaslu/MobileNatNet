@@ -5,15 +5,15 @@ plugins {
 }
 
 android {
-    namespace 'jp.ac.titech.hatanakalab.mobilenatnet'
+    namespace 'jp.ac.titech.e.sc.hfg.mobilenatnet'
     compileSdk 33
 
     defaultConfig {
-        applicationId "jp.ac.titech.hatanakalab.mobilenatnet"
+        applicationId "jp.ac.titech.e.sc.hfg.mobilenatnet"
         minSdk 24
         targetSdk 33
         versionCode 1
-        versionName "1.0"
+        versionName "1.1"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 

@@ -1,4 +1,4 @@
-package jp.ac.titech.hatanakalab.mobilenatnet
+package jp.ac.titech.e.sc.hfg.mobilenatnet
 
 import android.os.Bundle
 import androidx.fragment.app.Fragment
@@ -8,7 +8,8 @@ import android.view.ViewGroup
 import androidx.core.os.bundleOf
 import androidx.fragment.app.setFragmentResult
 import androidx.navigation.fragment.findNavController
-import jp.ac.titech.hatanakalab.mobilenatnet.databinding.FragmentSettingBinding
+import jp.ac.titech.e.sc.hfg.mobilenatnet.R
+import jp.ac.titech.e.sc.hfg.mobilenatnet.databinding.FragmentSettingBinding
 
 /**
  * A simple [Fragment] subclass as the default destination in the navigation.

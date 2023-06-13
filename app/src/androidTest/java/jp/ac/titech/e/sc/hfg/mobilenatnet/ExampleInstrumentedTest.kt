@@ -1,4 +1,4 @@
-package jp.ac.titech.hatanakalab.mobilenatnet
+package jp.ac.titech.e.sc.hfg.mobilenatnet
 
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
