@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:padding="16dp">
+
+        <TextView
+            android:id="@+id/local_ip_hint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:layout_constraintTop_toTopOf="parent"
+            android:text="@string/client_address"/>
+
+        <EditText
+            android:id="@+id/local_ip_input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:layout_constraintTop_toBottomOf="@id/local_ip_hint"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            android:hint="@string/set_client_address"
+            android:text="@string/default_client_address"
+            android:textAlignment="center"
+            android:inputType="number"
+            android:digits="0123456789."
+            android:imeOptions="actionNext"
+            android:autofillHints="" />
+
+        <TextView
+            android:id="@+id/server_ip_hint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:layout_constraintTop_toBottomOf="@id/local_ip_input"
+            android:text="@string/server_address"/>
+
+        <EditText
+            android:id="@+id/server_ip_input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:layout_constraintTop_toBottomOf="@id/server_ip_hint"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            android:hint="@string/set_server_address"
+            android:text="@string/default_server_address"
+            android:textAlignment="center"
+            android:inputType="number"
+            android:digits="0123456789."
+            android:imeOptions="actionNext"
+            android:autofillHints="" />
+
+        <TextView
+            android:id="@+id/multicast_ip_hint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:layout_constraintTop_toBottomOf="@id/server_ip_input"
+            android:text="@string/multicast_address"/>
+
+        <EditText
+            android:id="@+id/multicast_ip_input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:layout_constraintTop_toBottomOf="@id/multicast_ip_hint"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            android:hint="@string/set_multicast_address"
+            android:text="@string/default_multicast_address"
+            android:textAlignment="center"
+            android:inputType="number"
+            android:digits="0123456789."
+            android:imeOptions="actionDone"
+            android:autofillHints="" />
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/switch_multicast"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/use_multicast"
+            app:showText="false"
+            android:checked="true"
+            android:textOn="@string/multicast"
+            android:textOff="@string/unicast"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/multicast_ip_input"/>
+
+        <Button
+            android:id="@+id/button_set"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/next"
+            app:layout_constraintTop_toBottomOf="@id/switch_multicast"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</androidx.core.widget.NestedScrollView>
