@@ -1922,7 +1922,11 @@ class NatNetClient {
 
         // Required for setup
         // Get NatNet and server versions
-        sendRequest(commandSocket, NAT_CONNECT, "", InetSocketAddress(serverIpAddress, commandPort))
+        var ret = sendRequest(commandSocket, NAT_CONNECT, "", InetSocketAddress(serverIpAddress, commandPort))
+        println("Try to get NatNet and server versions, return $ret")
+
+        ret = sendRequest(commandSocket, NAT_REQUEST_MODELDEF, "", InetSocketAddress(serverIpAddress, commandPort))
+        println("Try to get NatNet model definition, return $ret")
 
         //#Example Commands
         //# Get NatNet and server versions
