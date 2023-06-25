@@ -10,6 +10,8 @@ apply plugin: 'org.jetbrains.kotlin.android'
 
 android {
     compileSdkVersion 33
+    
+    namespace 'jp.ac.titech.e.sc.hfg.mobilenatnet'
 
     defaultConfig {
         minSdkVersion 23
