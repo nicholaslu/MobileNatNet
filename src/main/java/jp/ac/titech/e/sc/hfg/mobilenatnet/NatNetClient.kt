@@ -831,7 +831,8 @@ class NatNetClient {
                     // Force plate frames
                     val nFramesShow = min(forcePlateChannelFrameCount, nFramesShowMax)
                     for (k in 0 until forcePlateChannelFrameCount) {
-                        val forcePlateChannelVal = FloatValue.unpack(data.sliceArray(offset until offset + 4))
+                        val forcePlateChannelVal =
+                            FloatValue.unpack(data.sliceArray(offset until offset + 4))
                         offset += 4
                         fpChannelData.addFrameEntry(forcePlateChannelVal)
 
@@ -885,7 +886,8 @@ class NatNetClient {
                     val nFramesShow = min(deviceChannelFrameCount, nFramesShowMax)
                     for (k in 0 until deviceChannelFrameCount) {
 //                        val deviceChannelVal = bytesToInt( data.sliceArray(offset until offset+4), ByteOrder.LITTLE_ENDIAN ) //todo choose what
-                        val deviceChannelVal = FloatValue.unpack(data.sliceArray(offset until offset + 4))
+                        val deviceChannelVal =
+                            FloatValue.unpack(data.sliceArray(offset until offset + 4))
                         offset += 4
                         if (k < nFramesShow) {
                             outString += "%3.2f ".format(deviceChannelVal)
@@ -1264,7 +1266,8 @@ class NatNetClient {
             val calMatrixTmp = ArrayList(Collections.nCopies(12, ArrayList(Collections.nCopies(12, 0.0))))
 
             for (i in 0 until 12) {
-                val calMatrixRow = FPCalMatrixRow.unpack(data.sliceArray(offset until offset + (12 * 4)))
+                val calMatrixRow =
+                    FPCalMatrixRow.unpack(data.sliceArray(offset until offset + (12 * 4)))
                 traceDd(
                     "\t%3d %3.3e %3.3e %3.3e %3.3e %3.3e %3.3e %3.3e %3.3e %3.3e %3.3e %3.3e %3.3e".format(
                         i,
