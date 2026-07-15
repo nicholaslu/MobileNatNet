@@ -84,6 +84,14 @@ fun intToBytes(
     }
 }
 
+fun bytesToLong(data: ByteArray, byteOrder: ByteOrder = ByteOrder.LITTLE_ENDIAN): Long {
+    return ByteBuffer.wrap(data).order(byteOrder).getLong()
+}
+
+fun bytesToShort(data: ByteArray, byteOrder: ByteOrder = ByteOrder.LITTLE_ENDIAN): Int {
+    return ByteBuffer.wrap(data).order(byteOrder).getShort().toInt()
+}
+
 fun bytesPartition(data: ByteArray, sep: String): Triple<String, String, String> {
     val list = data.decodeToString().split(sep)
     val sb = StringBuilder()
@@ -348,7 +356,7 @@ class NatNetClient {
     /** checks to see if stream version can change, then changes it with position reset */
     fun setNatNetVersion(major: Int, minor: Int): Int {
         var returnCode = -1
-        if (canChangeBitstreamVersion && (major != natNetRequestedVersion[0]) && (minor != natNetRequestedVersion[1])) {
+        if (canChangeBitstreamVersion && ((major != natNetRequestedVersion[0]) || (minor != natNetRequestedVersion[1]))) {
             val szCommand = "Bitstream,%1d.%1d".format(major, minor)
             returnCode = sendCommand(szCommand)
             if (returnCode >= 0) {
@@ -589,7 +597,7 @@ class NatNetClient {
 
         // Version 2.6 and later
         if (((major == 2) && (minor >= 6)) || major > 2) {
-            val param = ByteBuffer.wrap(data.sliceArray(offset until offset + 2)).getShort().toInt()
+            val param = bytesToShort(data.sliceArray(offset until offset + 2), ByteOrder.LITTLE_ENDIAN)
             val trackingValid = (param and 0x01) != 0
             offset += 2
             var isValidStr = "false"
@@ -603,11 +611,11 @@ class NatNetClient {
     }
 
     // Unpack a skeleton object from a data packet
-    private fun unpackSkeleton(data: ByteArray, major: Int, minor: Int): Pair<Int, Skeleton> {
+    private fun unpackSkeleton(data: ByteArray, major: Int, minor: Int, skeletonNum: Int = 0): Pair<Int, Skeleton> {
         var offset = 0
         val newId = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
         offset += 4
-        traceMf("ID:", newId)
+        traceMf("Skeleton %3d ID: %3d".format(skeletonNum, newId))
         val skeleton = Skeleton(newId)
 
         val rigidBodyCount = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
@@ -621,6 +629,105 @@ class NatNetClient {
         return Pair(offset, skeleton)
     }
 
+    // Unpack an asset (trained markerset) object from a data packet (NatNet 4.1 and later)
+    private fun unpackAsset(data: ByteArray, major: Int, minor: Int, assetNum: Int = 0): Pair<Int, Asset> {
+        var offset = 0
+        traceMf("\tAsset       : %d".format(assetNum))
+
+        // Asset ID (4 bytes)
+        val newId = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
+        offset += 4
+        val asset = Asset()
+        traceMf("\tAsset ID    : %d".format(newId))
+        asset.setId(newId)
+
+        // # of Rigid Bodies
+        val numRBs = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
+        offset += 4
+        traceMf("\tRigid Bodies: %d".format(numRBs))
+        for (rbNum in 0 until numRBs) {
+            val (offsetTmp, rigidBody) = unpackAssetRigidBodyData(data.sliceArray(offset until data.size), major, minor)
+            offset += offsetTmp
+            rigidBody.rbNum = rbNum
+            asset.addRigidBody(rigidBody)
+        }
+
+        // # of Markers
+        val numMarkers = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
+        offset += 4
+        traceMf("\tMarkers     : %d".format(numMarkers))
+        for (markerNum in 0 until numMarkers) {
+            val (offsetTmp, marker) = unpackAssetMarkerData(data.sliceArray(offset until data.size), major, minor)
+            offset += offsetTmp
+            marker.markerNum = markerNum
+            asset.addMarker(marker)
+        }
+
+        return Pair(offset, asset)
+    }
+
+    private fun unpackAssetRigidBodyData(data: ByteArray, major: Int, minor: Int): Pair<Int, AssetRigidBodyData> {
+        var offset = 0
+        // ID
+        val rbId = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
+        offset += 4
+        traceMf("\tID        : %d".format(rbId))
+
+        // Position: x,y,z
+        val pos = Vector3.unpack(data.sliceArray(offset until offset + 12))
+        offset += 12
+        traceMf("\tPosition   : [%3.2f, %3.2f, %3.2f]".format(pos[0], pos[1], pos[2]))
+
+        // Orientation: qx, qy, qz, qw
+        val rot = Quaternion.unpack(data.sliceArray(offset until offset + 16))
+        offset += 16
+        traceMf("\tOrientation: [%3.2f, %3.2f, %3.2f, %3.2f]".format(rot[0], rot[1], rot[2], rot[3]))
+
+        // Mean error
+        val meanError = FloatValue.unpack(data.sliceArray(offset until offset + 4))
+        offset += 4
+        traceMf("\tMean Error : %3.2f".format(meanError))
+
+        // Params
+        val param = bytesToShort(data.sliceArray(offset until offset + 2), ByteOrder.LITTLE_ENDIAN)
+        offset += 2
+        traceMf("\tParams     :", param)
+
+        val rigidBodyData = AssetRigidBodyData(rbId, pos, rot, meanError, param)
+        return Pair(offset, rigidBodyData)
+    }
+
+    private fun unpackAssetMarkerData(data: ByteArray, major: Int, minor: Int): Pair<Int, AssetMarkerData> {
+        var offset = 0
+        // ID
+        val markerId = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
+        offset += 4
+        traceMf("\tID         : %d".format(markerId))
+
+        // Position: x,y,z
+        val pos = Vector3.unpack(data.sliceArray(offset until offset + 12))
+        offset += 12
+        traceMf("\tPosition   : [%3.2f, %3.2f, %3.2f]".format(pos[0], pos[1], pos[2]))
+
+        // Size
+        val markerSize = FloatValue.unpack(data.sliceArray(offset until offset + 4))
+        offset += 4
+        traceMf("\tMarker Size: %3.2f".format(markerSize))
+
+        // Params
+        val markerParams = bytesToShort(data.sliceArray(offset until offset + 2), ByteOrder.LITTLE_ENDIAN)
+        offset += 2
+        traceMf("\tParams     :", markerParams)
+
+        // Residual
+        val residual = FloatValue.unpack(data.sliceArray(offset until offset + 4))
+        offset += 4
+        traceMf("\tResidual   : %3.2f".format(residual))
+
+        val markerData = AssetMarkerData(markerId, pos, markerSize, markerParams, residual)
+        return Pair(offset, markerData)
+    }
+
     //Unpack Mocap Data Functions
     private fun unpackFramePrefixData(data: ByteArray): Pair<Int, FramePrefixData> {
         var offset = 0
@@ -630,6 +737,47 @@ class NatNetClient {
         traceMf("Frame #:", frameNumber)
         val framePrefixData = FramePrefixData(frameNumber)
         return Pair(offset, framePrefixData)
+    }
+
+    // Unpack the data size field present in NatNet 4.1 and later
+    private fun unpackDataSize(data: ByteArray, major: Int, minor: Int): Pair<Int, Int> {
+        var sizeInBytes = 0
+        var offset = 0
+
+        if (((major == 4) && (minor > 0)) || (major > 4)) {
+            sizeInBytes = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
+            offset += 4
+            traceMf("Byte Count: %3d".format(sizeInBytes))
+        }
+
+        return Pair(offset, sizeInBytes)
+    }
+
+    private fun unpackLegacyOtherMarkers(
+        data: ByteArray,
+        packetSize: Int,
+        major: Int,
+        minor: Int
+    ): Pair<Int, LegacyMarkerData> {
+        var offset = 0
+
+        // Other marker count (4 bytes)
+        val otherMarkerCount = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
+        offset += 4
+        traceMf("Other Marker Count:", otherMarkerCount)
+
+        // Get data size (4 bytes)
+        val (offsetTmp, _) = unpackDataSize(data.sliceArray(offset until data.size), major, minor)
+        offset += offsetTmp
+
+        val otherMarkerData = LegacyMarkerData()
+        for (j in 0 until otherMarkerCount) {
+            val pos = Vector3.unpack(data.sliceArray(offset until offset + 12))
+            offset += 12
+            traceMf("\tMarker %3d : [x=%3.2f,y=%3.2f,z=%3.2f]".format(j, pos[0], pos[1], pos[2]))
+            otherMarkerData.addPos(pos)
+        }
+        return Pair(offset, otherMarkerData)
     }
 
     private fun unpackMarkerSetData(
@@ -645,6 +793,10 @@ class NatNetClient {
         offset += 4
         traceMf("Marker Set Count:", markerSetCount)
 
+        // Get data size (4 bytes)
+        val (offsetDs, _) = unpackDataSize(data.sliceArray(offset until data.size), major, minor)
+        offset += offsetDs
+
         for (i in 0 until markerSetCount) {
             val markerData = MarkerData()
             // Model name
@@ -656,28 +808,29 @@ class NatNetClient {
             // Marker count (4 bytes)
             val markerCount = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
             offset += 4
+            if (markerCount < 0) {
+                println("WARNING: Early return.  Invalid marker count")
+                return Pair(data.size, markerSetData)
+            } else if (markerCount > 10000) {
+                println("WARNING: Early return.  Marker count too high")
+                return Pair(data.size, markerSetData)
+            }
             traceMf("Marker Count    : ", markerCount)
 
             for (j in 0 until markerCount) {
+                if (data.size < (offset + 12)) {
+                    println("WARNING: Early return.  Out of data at marker $j of $markerCount")
+                    return Pair(data.size, markerSetData)
+                }
                 val pos = Vector3.unpack(data.sliceArray(offset until offset + 12))
                 offset += 12
                 traceMf("\tMarker %3d : [%3.2f,%3.2f,%3.2f]".format(j, pos[0], pos[1], pos[2]))
                 markerData.addPos(pos)
-                markerSetData.addMarkerData(markerData)
             }
+            markerSetData.addMarkerData(markerData)
         }
 
-        // Unlabeled markers count (4 bytes)
-        val unlabeledMarkersCount = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
-        offset += 4
-        traceMf("Unlabeled Markers Count:", unlabeledMarkersCount)
-
-        for (i in 0 until unlabeledMarkersCount) {
-            val pos = Vector3.unpack(data.sliceArray(offset until offset + 12))
-            offset += 12
-            traceMf("\tMarker %3d : [%3.2f,%3.2f,%3.2f]".format(i, pos[0], pos[1], pos[2]))
-            markerSetData.addUnlabeledMarker(pos)
-        }
+        // Unlabeled markers moved to Legacy Other Markers (see unpackLegacyOtherMarkers)
         return Pair(offset, markerSetData)
     }
 
@@ -693,6 +846,10 @@ class NatNetClient {
         val rigidBodyCount = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
         offset += 4
         traceMf("Rigid Body Count:", rigidBodyCount)
+
+        // Get data size (4 bytes)
+        val (offsetDs, _) = unpackDataSize(data.sliceArray(offset until data.size), major, minor)
+        offset += offsetDs
 
         for (i in 0 until rigidBodyCount) {
             val (offsetTmp, rigidBody) = unpackRigidBody(data.sliceArray(offset until data.size), major, minor, i)
@@ -714,13 +871,42 @@ class NatNetClient {
             skeletonCount = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
             offset += 4
             traceMf("Skeleton Count:", skeletonCount)
+
+            // Get data size (4 bytes)
+            val (offsetDs, _) = unpackDataSize(data.sliceArray(offset until data.size), major, minor)
+            offset += offsetDs
+
             for (i in 0 until skeletonCount) {
-                val (relOffset, skeleton) = unpackSkeleton(data.sliceArray(offset until data.size), major, minor)
+                val (relOffset, skeleton) = unpackSkeleton(data.sliceArray(offset until data.size), major, minor, i)
                 offset += relOffset
                 skeletonData.addSkeleton(skeleton)
             }
         }
         return Pair(offset, skeletonData)
+    }
+
+    // Unpack asset data (NatNet 4.1 and later)
+    private fun unpackAssetData(data: ByteArray, packetSize: Int, major: Int, minor: Int): Pair<Int, AssetData> {
+        val assetData = AssetData()
+        var offset = 0
+
+        // Asset Count
+        val assetCount = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
+        offset += 4
+        traceMf("Asset Count:", assetCount)
+
+        // Get data size (4 bytes)
+        val (offsetDs, _) = unpackDataSize(data.sliceArray(offset until data.size), major, minor)
+        offset += offsetDs
+
+        // Unpack assets
+        for (assetNum in 0 until assetCount) {
+            val (relOffset, asset) = unpackAsset(data.sliceArray(offset until data.size), major, minor, assetNum)
+            offset += relOffset
+            assetData.addAsset(asset)
+        }
+
+        return Pair(offset, assetData)
     }
 
     private fun decodeMarkerId(newId: Int): Pair<Int, Int> {
@@ -745,6 +931,11 @@ class NatNetClient {
             labeledMarkerCount = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
             offset += 4
             traceMf("Labeled Marker Count:", labeledMarkerCount)
+
+            // Get data size (4 bytes)
+            val (offsetDs, _) = unpackDataSize(data.sliceArray(offset until data.size), major, minor)
+            offset += offsetDs
+
             for (i in 0 until labeledMarkerCount) {
                 val tmpId = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
                 offset += 4
@@ -760,7 +951,7 @@ class NatNetClient {
                 // Version 2.6 and later
                 var param = 0
                 if ((major == 2 && minor >= 6) || major > 2) {
-                    param = ByteBuffer.wrap(data.sliceArray(offset until offset + 2)).getShort().toInt()
+                    param = bytesToShort(data.sliceArray(offset until offset + 2), ByteOrder.LITTLE_ENDIAN)
                     offset += 2
 //                    val occluded = ( param and 0x01 ) != 0
 //                    val pointCloudSolved = ( param and 0x02 ) != 0
@@ -772,6 +963,7 @@ class NatNetClient {
                 if (major >= 3) {
                     residual = FloatValue.unpack(data.sliceArray(offset until offset + 4))
                     offset += 4
+                    residual *= 1000.0
                     traceMf("  err  : [%3.2f]".format(residual))
                 }
 
@@ -799,6 +991,11 @@ class NatNetClient {
             forcePlateCount = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
             offset += 4
             traceMf("Force Plate Count:", forcePlateCount)
+
+            // Get data size (4 bytes)
+            val (offsetDs, _) = unpackDataSize(data.sliceArray(offset until data.size), major, minor)
+            offset += offsetDs
+
             for (i in 0 until forcePlateCount) {
                 // ID
                 val forcePlateId = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
@@ -843,8 +1040,8 @@ class NatNetClient {
                     }
                     traceMf("%s".format(outString))
                     forcePlate.addChannelData(fpChannelData)
-                    forcePlateData.addForcePlate(forcePlate)
                 }
+                forcePlateData.addForcePlate(forcePlate)
             }
         }
         return Pair(offset, forcePlateData)
@@ -860,6 +1057,11 @@ class NatNetClient {
             deviceCount = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
             offset += 4
             traceMf("Device Count:", deviceCount)
+
+            // Get data size (4 bytes)
+            val (offsetDs, _) = unpackDataSize(data.sliceArray(offset until data.size), major, minor)
+            offset += offsetDs
+
             for (i in 0 until deviceCount) {
                 // ID
                 val deviceId = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
@@ -883,7 +1085,6 @@ class NatNetClient {
                     // Device Frame Data
                     val nFramesShow = min(deviceChannelFrameCount, nFramesShowMax)
                     for (k in 0 until deviceChannelFrameCount) {
-//                        val deviceChannelVal = bytesToInt( data.sliceArray(offset until offset+4), ByteOrder.LITTLE_ENDIAN ) //todo choose what
                         val deviceChannelVal = FloatValue.unpack(data.sliceArray(offset until offset + 4))
                         offset += 4
                         if (k < nFramesShow) {
@@ -891,17 +1092,184 @@ class NatNetClient {
                         }
 
                         deviceChannelData.addFrameEntry(deviceChannelVal)
-                        if (nFramesShow < deviceChannelFrameCount) {
-                            outString += " showing %3d of %3d frames".format(nFramesShow, deviceChannelFrameCount)
-                        }
-                        traceMf("%s".format(outString))
-                        device.addChannelData(deviceChannelData)
                     }
-                    deviceData.addDevice(device)
+                    if (nFramesShow < deviceChannelFrameCount) {
+                        outString += " showing %3d of %3d frames".format(nFramesShow, deviceChannelFrameCount)
+                    }
+                    traceMf("%s".format(outString))
+                    device.addChannelData(deviceChannelData)
                 }
+                deviceData.addDevice(device)
             }
         }
         return Pair(offset, deviceData)
+    }
+
+    // Unpack IMU data (NatNet 4.5 and later)
+    private fun unpackImuData(data: ByteArray, packetSize: Int, major: Int, minor: Int): Pair<Int, IMUData> {
+        val imuData = IMUData()
+        var offset = 0
+        val imuCount: Int
+        if ((major == 4 && minor >= 5) || (major > 5)) {
+            imuCount = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
+            offset += 4
+            traceMf("IMU Count: %d".format(imuCount))
+
+            // Get data size (4 bytes)
+            val (offsetDs, _) = unpackDataSize(data.sliceArray(offset until data.size), major, minor)
+            offset += offsetDs
+
+            for (imuNum in 0 until imuCount) {
+                val imuId = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
+                offset += 4
+                traceMf("ID: %d".format(imuId))
+
+                val pos = Vector3.unpack(data.sliceArray(offset until offset + 12))
+                offset += 12
+                traceMf("Position: [x: %3.2f, y: %3.2f, z: %3.2f]".format(pos[0], pos[1], pos[2]))
+
+                val rot = Quaternion.unpack(data.sliceArray(offset until offset + 16))
+                offset += 16
+                traceMf("Rotation: [qx: %3.2f, qy: %3.2f, qz: %3.2f, qw: %3.2f]".format(rot[0], rot[1], rot[2], rot[3]))
+
+                val params = bytesToShort(data.sliceArray(offset until offset + 2), ByteOrder.LITTLE_ENDIAN)
+                offset += 2
+                traceMf("Params: %d".format(params))
+
+                val imu = IMU(imuId, pos, rot, params)
+                imuData.addImu(imu)
+            }
+        }
+        return Pair(offset, imuData)
+    }
+
+    // Unpack GPIO data (NatNet 4.5 and later)
+    private fun unpackGpioData(data: ByteArray, packetSize: Int, major: Int, minor: Int): Pair<Int, GPIOData> {
+        val gpioData = GPIOData()
+        var offset = 0
+        val gpioCount: Int
+        if ((major == 4 && minor >= 5) || (major > 5)) {
+            gpioCount = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
+            offset += 4
+            traceMf("GPIO Count: %d".format(gpioCount))
+
+            // data size (4 bytes)
+            offset += 4
+
+            for (gpioNum in 0 until gpioCount) {
+                val gpioId = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
+                offset += 4
+                traceMf("ID: %d".format(gpioId))
+
+                val gpioPortCount = data[offset].toInt()
+                offset += 1
+                traceMf("Port Count: %d".format(gpioPortCount))
+
+                val gpioPinList = arrayListOf<Int>()
+                for (i in 0 until gpioPortCount) {
+                    val portValue = bytesToShort(data.sliceArray(offset until offset + 2), ByteOrder.LITTLE_ENDIAN)
+                    offset += 2
+                    traceMf("Port %d: Value = %d".format(i, portValue))
+                    gpioPinList.add(portValue)
+                }
+
+                val gpio = GPIO(gpioId, gpioPortCount, gpioPinList)
+                gpioData.addGpio(gpio)
+            }
+        }
+        return Pair(offset, gpioData)
+    }
+
+    // Unpacks frame suffix data for NatNet versions before 2.7 (float timestamp)
+    private fun unpackFrameSuffixDataPre27(data: ByteArray, offset: Int, frameSuffixData: FrameSuffixData): Pair<Int, Int> {
+        var offsetTmp = offset
+        val timestamp = FloatValue.unpack(data.sliceArray(offsetTmp until offsetTmp + 4))
+        offsetTmp += 4
+        traceMf("Timestamp : %3.2f".format(timestamp))
+        frameSuffixData.timestamp = timestamp
+
+        val param = bytesToShort(data.sliceArray(offsetTmp until offsetTmp + 2), ByteOrder.LITTLE_ENDIAN)
+        offsetTmp += 2
+        return Pair(offsetTmp, param)
+    }
+
+    // Unpacks frame suffix data from NatNet 2.7 up to (not including) NatNet 3, and the major == 0 case
+    private fun unpackFrameSuffixData27To3(data: ByteArray, offset: Int, frameSuffixData: FrameSuffixData): Pair<Int, Int> {
+        var offsetTmp = offset
+        val timestamp = DoubleValue.unpack(data.sliceArray(offsetTmp until offsetTmp + 8))
+        offsetTmp += 8
+        traceMf("Timestamp : %3.2f".format(timestamp))
+        frameSuffixData.timestamp = timestamp
+
+        val param = bytesToShort(data.sliceArray(offsetTmp until offsetTmp + 2), ByteOrder.LITTLE_ENDIAN)
+        offsetTmp += 2
+        return Pair(offsetTmp, param)
+    }
+
+    // Unpacks frame suffix data from NatNet 3 to NatNet 4.0 inclusive
+    private fun unpackFrameSuffixData3To4(data: ByteArray, offset: Int, frameSuffixData: FrameSuffixData): Pair<Int, Int> {
+        var offsetTmp = offset
+        val timestamp = DoubleValue.unpack(data.sliceArray(offsetTmp until offsetTmp + 8))
+        offsetTmp += 8
+        traceMf("Timestamp : %3.2f".format(timestamp))
+        frameSuffixData.timestamp = timestamp
+
+        val stampCameraMidExposure = bytesToLong(data.sliceArray(offsetTmp until offsetTmp + 8), ByteOrder.LITTLE_ENDIAN)
+        traceMf("Mid-exposure timestamp         : %3d".format(stampCameraMidExposure))
+        offsetTmp += 8
+        frameSuffixData.stampCameraMidExposure = stampCameraMidExposure
+
+        val stampDataReceived = bytesToLong(data.sliceArray(offsetTmp until offsetTmp + 8), ByteOrder.LITTLE_ENDIAN)
+        offsetTmp += 8
+        frameSuffixData.stampDataReceived = stampDataReceived
+        traceMf("Camera data received timestamp : %3d".format(stampDataReceived))
+
+        val stampTransmit = bytesToLong(data.sliceArray(offsetTmp until offsetTmp + 8), ByteOrder.LITTLE_ENDIAN)
+        offsetTmp += 8
+        traceMf("Transmit timestamp             : %3d".format(stampTransmit))
+        frameSuffixData.stampTransmit = stampTransmit
+
+        val param = bytesToShort(data.sliceArray(offsetTmp until offsetTmp + 2), ByteOrder.LITTLE_ENDIAN)
+        offsetTmp += 2
+        return Pair(offsetTmp, param)
+    }
+
+    // Unpacks frame suffix data from NatNet 4.1 to present (adds precision timestamps)
+    private fun unpackFrameSuffixData41ToPresent(data: ByteArray, offset: Int, frameSuffixData: FrameSuffixData): Pair<Int, Int> {
+        var offsetTmp = offset
+        val timestamp = DoubleValue.unpack(data.sliceArray(offsetTmp until offsetTmp + 8))
+        offsetTmp += 8
+        traceMf("Timestamp : %3.2f".format(timestamp))
+        frameSuffixData.timestamp = timestamp
+
+        val stampCameraMidExposure = bytesToLong(data.sliceArray(offsetTmp until offsetTmp + 8), ByteOrder.LITTLE_ENDIAN)
+        traceMf("Mid-exposure timestamp         : %3d".format(stampCameraMidExposure))
+        offsetTmp += 8
+        frameSuffixData.stampCameraMidExposure = stampCameraMidExposure
+
+        val stampDataReceived = bytesToLong(data.sliceArray(offsetTmp until offsetTmp + 8), ByteOrder.LITTLE_ENDIAN)
+        offsetTmp += 8
+        frameSuffixData.stampDataReceived = stampDataReceived
+        traceMf("Camera data received timestamp : %3d".format(stampDataReceived))
+
+        val stampTransmit = bytesToLong(data.sliceArray(offsetTmp until offsetTmp + 8), ByteOrder.LITTLE_ENDIAN)
+        offsetTmp += 8
+        traceMf("Transmit timestamp             : %3d".format(stampTransmit))
+        frameSuffixData.stampTransmit = stampTransmit
+
+        val precTimestampSecs = bytesToInt(data.sliceArray(offsetTmp until offsetTmp + 4), ByteOrder.LITTLE_ENDIAN)
+        traceMf("Precision timestamp (sec)      : %3d".format(precTimestampSecs))
+        offsetTmp += 4
+        frameSuffixData.precTimestampSecs = precTimestampSecs
+
+        val precTimestampFracSecs = bytesToInt(data.sliceArray(offsetTmp until offsetTmp + 4), ByteOrder.LITTLE_ENDIAN)
+        traceMf("Precision timestamp (frac sec) : %3d".format(precTimestampFracSecs))
+        offsetTmp += 4
+        frameSuffixData.precTimestampFracSecs = precTimestampFracSecs
+
+        val param = bytesToShort(data.sliceArray(offsetTmp until offsetTmp + 2), ByteOrder.LITTLE_ENDIAN)
+        offsetTmp += 2
+        return Pair(offsetTmp, param)
     }
 
     private fun unpackFrameSuffixData(
@@ -922,41 +1290,38 @@ class NatNetClient {
         offset += 4
         frameSuffixData.timecodeSub = timecodeSub
 
-        // Timestamp (increased to double precision in 2.7 and later)
-        if ((major == 2 && minor >= 7) or (major > 2)) {
-            val timestamp = DoubleValue.unpack(data.sliceArray(offset until offset + 8))
-            offset += 8
+        var param = 0
+        // check to see if there is enough data
+        if ((packetSize - offset) <= 0) {
+            println("ERROR: Early End of Data Frame Suffix Data")
+            println("\tNo time stamp info available")
         } else {
-            val timestamp = FloatValue.unpack(data.sliceArray(offset until offset + 4))
-            offset += 4
-            traceMf("Timestamp : %3.2f".format(timestamp))
-            frameSuffixData.timestamp = timestamp
+            if (major == 0) {
+                val (offsetTmp, paramTmp) = unpackFrameSuffixData27To3(data, offset, frameSuffixData)
+                offset = offsetTmp
+                param = paramTmp
+            } else if (major < 2 || (major == 2 && minor < 7)) {
+                val (offsetTmp, paramTmp) = unpackFrameSuffixDataPre27(data, offset, frameSuffixData)
+                offset = offsetTmp
+                param = paramTmp
+            } else if (major == 2 && minor >= 7) {
+                val (offsetTmp, paramTmp) = unpackFrameSuffixData27To3(data, offset, frameSuffixData)
+                offset = offsetTmp
+                param = paramTmp
+            } else if (major == 3 || (major == 4 && minor == 0)) {
+                val (offsetTmp, paramTmp) = unpackFrameSuffixData3To4(data, offset, frameSuffixData)
+                offset = offsetTmp
+                param = paramTmp
+            } else if (major >= 4) {
+                // NatNet 4.1 and later (4.5 shares the same suffix layout)
+                val (offsetTmp, paramTmp) = unpackFrameSuffixData41ToPresent(data, offset, frameSuffixData)
+                offset = offsetTmp
+                param = paramTmp
+            }
         }
 
-        // Hires Timestamp (Version 3.0 and later)
-        if (major >= 3) {
-            val stampCameraMidExposure = bytesToInt(data.sliceArray(offset until offset + 8), ByteOrder.LITTLE_ENDIAN)
-            traceMf("Mid-exposure timestamp         : %3d".format(stampCameraMidExposure))
-            offset += 8
-            frameSuffixData.stampCameraMidExposure = stampCameraMidExposure.toLong()
-
-            val stampDataReceived = bytesToInt(data.sliceArray(offset until offset + 8), ByteOrder.LITTLE_ENDIAN)
-            offset += 8
-            frameSuffixData.stampDataReceived = stampDataReceived
-            traceMf("Camera data received timestamp : %3d".format(stampDataReceived))
-
-            val stampTransmit = bytesToInt(data.sliceArray(offset until offset + 8), ByteOrder.LITTLE_ENDIAN)
-            offset += 8
-            traceMf("Transmit timestamp             : %3d".format(stampTransmit))
-            frameSuffixData.stampTransmit = stampTransmit.toLong()
-        }
-
-
-        // Frame parameters
-        val param = ByteBuffer.wrap(data.sliceArray(offset until offset + 2)).getShort().toInt()
         val isRecording = (param and 0x01) != 0
         val trackedModelsChanged = (param and 0x02) != 0
-        offset += 2
         frameSuffixData.param = param
         frameSuffixData.isRecording = isRecording
         frameSuffixData.trackedModelsChanged = trackedModelsChanged
@@ -989,6 +1354,16 @@ class NatNetClient {
         val markerSetCount = markerSetData.getMarkerSetCount()
         val unlabeledMarkersCount = markerSetData.getUnlabeledMarkerCount()
 
+        // Legacy Other Markers
+        val (relOffsetLegacy, legacyOtherMarkers) = unpackLegacyOtherMarkers(
+            data.sliceArray(offset until data.size),
+            (packetSize - offset),
+            major,
+            minor
+        )
+        offset += relOffsetLegacy
+        mocapData.legacyOtherMarkers = legacyOtherMarkers
+
         // Rigid Body Data
         val (relOffset2, rigidBodyData) = unpackRigidBodyData(
             data.sliceArray(offset until data.size),
@@ -1010,6 +1385,20 @@ class NatNetClient {
         offset += relOffset3
         mocapData.skeletonData = skeletonData
         val skeletonCount = skeletonData.getSkeletonCount()
+
+        // Assets (Motive 3.1/NatNet 4.1 and greater)
+        var assetCount = 0
+        if (((major == 4) && (minor >= 1)) || (major > 4)) {
+            val (relOffsetAsset, assetData) = unpackAssetData(
+                data.sliceArray(offset until data.size),
+                (packetSize - offset),
+                major,
+                minor
+            )
+            offset += relOffsetAsset
+            mocapData.assetData = assetData
+            assetCount = assetData.getAssetCount()
+        }
 
         // Labeled Marker Data
         val (relOffset4, labeledMarkerData) = unpackLabeledMarkerData(
@@ -1042,6 +1431,28 @@ class NatNetClient {
         offset += relOffset6
         mocapData.deviceData = deviceData
 
+        // IMU Data (NatNet 4.5 and greater)
+        val (relOffsetImu, imuData) = unpackImuData(
+            data.sliceArray(offset until data.size),
+            (packetSize - offset),
+            major,
+            minor
+        )
+        offset += relOffsetImu
+        mocapData.imuData = imuData
+        val imuCount = imuData.getImuCount()
+
+        // GPIO Data (NatNet 4.5 and greater)
+        val (relOffsetGpio, gpioData) = unpackGpioData(
+            data.sliceArray(offset until data.size),
+            (packetSize - offset),
+            major,
+            minor
+        )
+        offset += relOffsetGpio
+        mocapData.gpioData = gpioData
+        val gpioCount = gpioData.getGpioCount()
+
         // Frame Suffix Data
         //relOffset, timecode, timecodeSub, timestamp, isRecording, trackedModelsChanged = \
         val (relOffset7, frameSuffixData) = unpackFrameSuffixData(
@@ -1066,6 +1477,9 @@ class NatNetClient {
             dataDict["unlabeledMarkersCount"] = unlabeledMarkersCount
             dataDict["rigidBodyCount"] = rigidBodyCount
             dataDict["skeletonCount"] = skeletonCount
+            dataDict["assetCount"] = assetCount
+            dataDict["imuCount"] = imuCount
+            dataDict["gpioCount"] = gpioCount
             dataDict["labeledMarkerCount"] = labeledMarkerCount
             dataDict["timecode"] = timecode
             dataDict["timecodeSub"] = timecodeSub
@@ -1133,6 +1547,14 @@ class NatNetClient {
         rbDesc.setPos(pos[0], pos[1], pos[2])
 
         traceDd("\tPosition          : [%3.2f, %3.2f, %3.2f]".format(pos[0], pos[1], pos[2]))
+
+        // Orientation offset (Version 4.2 and higher)
+        if (((major == 4) && (minor >= 2)) || (major > 4) || (major == 0)) {
+            val quat = Quaternion.unpack(data.sliceArray(offset until offset + 16))
+            offset += 16
+            rbDesc.setRot(quat[0], quat[1], quat[2], quat[3])
+            traceDd("\tRotation          : [%3.2f, %3.2f, %3.2f, %3.2f]".format(quat[0], quat[1], quat[2], quat[3]))
+        }
 
         // Version 3.0 and higher, rigid body marker information contained in description
         if ((major >= 3) or (major == 0)) {
@@ -1416,6 +1838,187 @@ class NatNetClient {
         return Pair(offset, cameraDesc)
     }
 
+    // Unpack a marker description packet (NatNet 4.1 and later, used by asset descriptions)
+    private fun unpackMarkerDescription(data: ByteArray, major: Int, minor: Int): Pair<Int, MarkerDescription> {
+        var offset = 0
+
+        // Name
+        val (name, _, _) = bytesPartition(data.sliceArray(offset until data.size), "\u0000")
+        offset += name.length + 1
+        traceDd("\tName      : %s".format(name))
+
+        // ID
+        val markerId = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
+        offset += 4
+        traceDd("\tID        : %d".format(markerId))
+
+        // Initial Position
+        val initialPosition = Vector3.unpack(data.sliceArray(offset until offset + 12))
+        offset += 12
+        traceDd(
+            "\tPosition  : [%3.2f, %3.2f, %3.2f]".format(
+                initialPosition[0],
+                initialPosition[1],
+                initialPosition[2]
+            )
+        )
+
+        // Size
+        val markerSize = FloatValue.unpack(data.sliceArray(offset until offset + 4))
+        offset += 4
+        traceMf("\tMarker Size:", markerSize)
+
+        // Params
+        val markerParams = bytesToShort(data.sliceArray(offset until offset + 2), ByteOrder.LITTLE_ENDIAN)
+        offset += 2
+        traceMf("\tParams    :", markerParams)
+
+        traceDd("\tunpackMarkerDescription processed %3d bytes".format(offset))
+
+        val markerDesc = MarkerDescription(name, markerId, initialPosition, markerSize, markerParams)
+        return Pair(offset, markerDesc)
+    }
+
+    // Unpack an asset (trained markerset) description packet (NatNet 4.1 and later)
+    private fun unpackAssetDescription(data: ByteArray, major: Int, minor: Int): Pair<Int, AssetDescription> {
+        var offset = 0
+
+        // Name
+        val (name, _, _) = bytesPartition(data.sliceArray(offset until data.size), "\u0000")
+        offset += name.length + 1
+        traceDd("\tName      : %s".format(name))
+
+        // Asset Type 4 bytes
+        val assetType = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
+        offset += 4
+        traceDd("\tType      : %d".format(assetType))
+
+        // ID 4 bytes
+        val assetId = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
+        offset += 4
+        traceDd("\tID        : %d".format(assetId))
+
+        // # of RigidBodies
+        val numRBs = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
+        offset += 4
+        traceDd("\tRigid Body (Bone) Count: %d".format(numRBs))
+        val rigidBodyArray = arrayListOf<RigidBodyDescription>()
+        for (rbNum in 0 until numRBs) {
+            traceDd("\tRigid Body (Bone) %d:".format(rbNum))
+            val (offsetTmp, rigidBody) = unpackRigidBodyDescription(data.sliceArray(offset until data.size), major, minor)
+            offset += offsetTmp
+            rigidBodyArray.add(rigidBody)
+        }
+
+        // # of Markers
+        val numMarkers = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
+        offset += 4
+        traceDd("\tMarker Count: %d".format(numMarkers))
+        val markerArray = arrayListOf<MarkerDescription>()
+        for (markerNum in 0 until numMarkers) {
+            traceDd("\tMarker %d:".format(markerNum))
+            val (offsetTmp, marker) = unpackMarkerDescription(data.sliceArray(offset until data.size), major, minor)
+            offset += offsetTmp
+            markerArray.add(marker)
+        }
+
+        traceDd("\tunpackAssetDescription processed %3d bytes".format(offset))
+
+        val assetDesc = AssetDescription(name, assetType, assetId, rigidBodyArray, markerArray)
+        return Pair(offset, assetDesc)
+    }
+
+    // Unpack an IMU description packet (NatNet 4.5 and later)
+    private fun unpackImuDescription(data: ByteArray, major: Int, minor: Int): Pair<Int, IMUDescription?> {
+        if ((major == 4 && minor >= 5) || (major > 4)) {
+            var offset = 0
+
+            // Name
+            val (name, _, _) = bytesPartition(data.sliceArray(offset until data.size), "\u0000")
+            offset += name.length + 1
+            traceDd("\tName      : %s".format(name))
+
+            // ID
+            val imuId = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
+            offset += 4
+            traceDd("\tID        : %d".format(imuId))
+
+            // Sensor Fused
+            val sensorFused = data[offset].toInt()
+            offset += 1
+            traceDd("\tSensor Fused: %d".format(sensorFused))
+
+            // Rigid Body ID
+            val rbId = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
+            offset += 4
+            traceDd("\tRigid Body ID: %d".format(rbId))
+
+            val imuDesc = IMUDescription(name, imuId, sensorFused, rbId)
+            return Pair(offset, imuDesc)
+        }
+        return Pair(0, null)
+    }
+
+    // Unpack a GPIO description packet (NatNet 4.5 and later)
+    private fun unpackGpioDescription(data: ByteArray, major: Int, minor: Int): Pair<Int, GPIODescription?> {
+        if ((major == 4 && minor >= 5) || (major > 4)) {
+            var offset = 0
+
+            // Name
+            val (name, _, _) = bytesPartition(data.sliceArray(offset until data.size), "\u0000")
+            offset += name.length + 1
+            traceDd("\tName      : %s".format(name))
+
+            // ID
+            val gpioId = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
+            offset += 4
+            traceDd("\tID        : %d".format(gpioId))
+
+            // Ports
+            val portCount = data[offset].toInt()
+            offset += 1
+            traceDd("\tPort Count        : %d".format(portCount))
+
+            val portArray = arrayListOf<String>()
+            for (port in 0 until portCount) {
+                val (portName, _, _) = bytesPartition(data.sliceArray(offset until data.size), "\u0000")
+                offset += portName.length + 1
+                portArray.add(portName)
+                traceDd("\tGPIO Port Name %d: %s".format(port, portName))
+            }
+
+            val gpioDesc = GPIODescription(name, gpioId, portArray)
+            return Pair(offset, gpioDesc)
+        }
+        return Pair(0, null)
+    }
+
+    // Unpack an anchor description packet (NatNet 4.5 and later)
+    private fun unpackAnchorDescription(data: ByteArray, major: Int, minor: Int): Pair<Int, AnchorDescription?> {
+        if ((major == 4 && minor >= 5) || (major > 4)) {
+            var offset = 0
+
+            // Name
+            val (name, _, _) = bytesPartition(data.sliceArray(offset until data.size), "\u0000")
+            offset += name.length + 1
+            traceDd("\tName      : %s".format(name))
+
+            // Position
+            val pos = Vector3.unpack(data.sliceArray(offset until offset + 12))
+            offset += 12
+            traceMf("\tPosition   : [%3.2f, %3.2f, %3.2f]".format(pos[0], pos[1], pos[2]))
+
+            // ID
+            val anchorId = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
+            offset += 4
+            traceDd("\tID        : %d".format(anchorId))
+
+            val anchorDesc = AnchorDescription(name, pos, anchorId)
+            return Pair(offset, anchorDesc)
+        }
+        return Pair(0, null)
+    }
+
     // Unpack a data description packet
     private fun unpackDataDescriptions(
         data: ByteArray,
@@ -1433,7 +2036,11 @@ class NatNetClient {
             traceDd("Dataset ", i)
             val dataType = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
             offset += 4
-//            dataTmp=None
+            // Size in bytes (Version 4.1 and later)
+            if (((major == 4) && (minor >= 1)) || (major > 4)) {
+                val sizeInBytes = bytesToInt(data.sliceArray(offset until offset + 4), ByteOrder.LITTLE_ENDIAN)
+                offset += 4
+            }
             when (dataType) {
                 0 -> {
                     traceDd("Type: 0 Markerset")
@@ -1493,6 +2100,50 @@ class NatNetClient {
                 5 -> {
                     traceDd("Type: 5 Camera")
                     val (offsetTmp, dataTmp) = unpackCameraDescription(
+                        data.sliceArray(offset until data.size),
+                        major,
+                        minor
+                    )
+                    offset += offsetTmp
+                    dataDescs.addData(dataTmp)
+                }
+
+                6 -> {
+                    traceDd("Type: 6 Asset")
+                    val (offsetTmp, dataTmp) = unpackAssetDescription(
+                        data.sliceArray(offset until data.size),
+                        major,
+                        minor
+                    )
+                    offset += offsetTmp
+                    dataDescs.addData(dataTmp)
+                }
+
+                7 -> {
+                    traceDd("Type: 7 IMU")
+                    val (offsetTmp, dataTmp) = unpackImuDescription(
+                        data.sliceArray(offset until data.size),
+                        major,
+                        minor
+                    )
+                    offset += offsetTmp
+                    dataDescs.addData(dataTmp)
+                }
+
+                8 -> {
+                    traceDd("Type: 8 GPIO")
+                    val (offsetTmp, dataTmp) = unpackGpioDescription(
+                        data.sliceArray(offset until data.size),
+                        major,
+                        minor
+                    )
+                    offset += offsetTmp
+                    dataDescs.addData(dataTmp)
+                }
+
+                9 -> {
+                    traceDd("Type: 9 Anchor")
+                    val (offsetTmp, dataTmp) = unpackAnchorDescription(
                         data.sliceArray(offset until data.size),
                         major,
                         minor
@@ -1579,14 +2230,33 @@ class NatNetClient {
         return offset
     }
 
+    // unpackBitstreamInfo is for local use of the client
+    // and will update the values for the current bitstream of the server.
+    private fun unpackBitstreamInfo(data: ByteArray, packetSize: Int, major: Int, minor: Int): ArrayList<Int> {
+        val nnVersion = arrayListOf<Int>()
+        val (inString, _, _) = bytesPartition(data, " ")
+        val messageList = inString.split(",")
+        if (messageList.size > 1) {
+            if (messageList[0] == "Bitstream") {
+                messageList[1].split(".").forEach { i ->
+                    val version = i.trim().toIntOrNull()
+                    if (version != null) {
+                        nnVersion.add(version)
+                    }
+                }
+            }
+        }
+        return nnVersion
+    }
+
     private fun commandThreadFunction(inSocket: DatagramSocket, stop: () -> Boolean, gprintLevel: () -> Int): Int {
         val messageIdDict = mutableMapOf<String, Int>()
         if (!useMulticast) {
             inSocket.soTimeout = 2000
         }
         var data = ByteArray(0)
-        // 64k buffer size
-        val recvBufferSize = 64 * 1024
+        // 128k buffer size
+        val recvBufferSize = 128 * 1024
         val recvBuffer = ByteArray(recvBufferSize)
         while (!stop()) {
             // Block for input
@@ -1650,8 +2320,8 @@ class NatNetClient {
     private fun dataThreadFunction(inSocket: DatagramSocket, stop: () -> Boolean, gprintLevel: () -> Int): Int {
         val messageIdDict = mutableMapOf<String, Int>()
         var data = ByteArray(0)
-        // 64k buffer size
-        val recvBufferSize = 64 * 1024
+        // 128k buffer size
+        val recvBufferSize = 128 * 1024
         val recvBuffer = ByteArray(recvBufferSize)
 
         while (!stop()) {
@@ -1778,6 +2448,21 @@ class NatNetClient {
             } else {
                 val showRemainder = false
                 val (message, separator, remainder) = bytesPartition(data.sliceArray(offset until data.size), "\u0000")
+                if (message.length < 30) {
+                    // Decode bitstream version
+                    if (message.startsWith("Bitstream")) {
+                        val nnVersion = unpackBitstreamInfo(data.sliceArray(offset until data.size), packetSize, major, minor)
+                        // This is the current server version
+                        if (nnVersion.size > 1) {
+                            for (i in nnVersion.indices) {
+                                natNetStreamVersionServer[i] = nnVersion[i]
+                            }
+                            for (i in nnVersion.size until 4) {
+                                natNetStreamVersionServer[i] = 0
+                            }
+                        }
+                    }
+                }
                 offset += message.length + 1
                 if (showRemainder) {
                     trace("Command response:", message, " separator:", separator, " remainder:", remainder)
@@ -1809,6 +2494,7 @@ class NatNetClient {
         // Compose the message in our known message format
         var commandStr = commandStr
         var packetSize = 0
+        var connectPayload = ByteArray(0)
         when (command) {
             NAT_REQUEST_MODELDEF, NAT_REQUEST_FRAMEOFDATA -> {
                 packetSize = 0
@@ -1820,8 +2506,29 @@ class NatNetClient {
             }
 
             NAT_CONNECT -> {
-                commandStr = "Ping"
-                packetSize = commandStr.length + 1
+                // NatNet 4.1+ : connect with a specific requested bitstream version.
+                // 270 byte payload; the first 4 bytes spell out "Ping" and
+                // bytes 265-268 hold the requested NatNet version.
+                val tmpVersion = arrayListOf(4, 5, 0, 0)
+                println(
+                    "NAT_CONNECT to Motive with %d %d %d %d\n".format(
+                        tmpVersion[0],
+                        tmpVersion[1],
+                        tmpVersion[2],
+                        tmpVersion[3]
+                    )
+                )
+                connectPayload = ByteArray(270)
+                connectPayload[0] = 80  // 'P'
+                connectPayload[1] = 105 // 'i'
+                connectPayload[2] = 110 // 'n'
+                connectPayload[3] = 103 // 'g'
+                connectPayload[264] = 0
+                connectPayload[265] = tmpVersion[0].toByte()
+                connectPayload[266] = tmpVersion[1].toByte()
+                connectPayload[267] = tmpVersion[2].toByte()
+                connectPayload[268] = tmpVersion[3].toByte()
+                packetSize = connectPayload.size + 1
             }
 
             NAT_KEEPALIVE -> {
@@ -1833,7 +2540,11 @@ class NatNetClient {
         var data = intToBytes(command, 2, ByteOrder.LITTLE_ENDIAN)
         data += intToBytes(packetSize, 2, ByteOrder.LITTLE_ENDIAN)
 
-        data += commandStr.toByteArray()
+        data += if (command == NAT_CONNECT) {
+            connectPayload
+        } else {
+            commandStr.toByteArray()
+        }
         data += "\u0000".toByteArray()
 
         val datagramPacket = DatagramPacket(data, data.size, address)

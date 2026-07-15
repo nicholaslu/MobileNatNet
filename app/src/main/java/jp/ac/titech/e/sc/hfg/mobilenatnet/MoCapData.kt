@@ -210,6 +210,32 @@ class MarkerSetData {
     }
 }
 
+class LegacyMarkerData {
+    val markerPosList = arrayListOf<ArrayList<Double>>()
+
+    fun addPos(pos: ArrayList<Double>): Int {
+        markerPosList.add(pos)
+        return markerPosList.size
+    }
+
+    fun getMarkerCount(): Int {
+        return markerPosList.size
+    }
+
+    fun getAsString(tabStr: String = "  ", level: Int = 0): String {
+        val outTabStr = getTabStr(tabStr, level)
+        val outTabStr2 = getTabStr(tabStr, level + 1)
+        var outStr = ""
+        val markerCount = markerPosList.size
+        outStr += "%sLegacy Other Marker Count:%3d\n".format(outTabStr, markerCount)
+        for (i in 0 until markerCount) {
+            val pos = markerPosList[i]
+            outStr += "%sMarker %3d pos : [%3.2f,%3.2f,%3.2f]\n".format(outTabStr2, i, pos[0], pos[1], pos[2])
+        }
+        return outStr
+    }
+}
+
 class RigidBodyMarker {
     var pos = arrayListOf(0.0, 0.0, 0.0)
     var idNum = 0
@@ -343,6 +369,132 @@ class SkeletonData {
         for (skeletonNum in 0 until skeletonCount) {
             outStr += "%sSkeleton %3d\n".format(outTabStr2, skeletonNum)
             outStr += skeletonList[skeletonNum].getAsString(tabStr, level + 2)
+        }
+        return outStr
+    }
+}
+
+class AssetMarkerData(
+    val markerId: Int,
+    val pos: ArrayList<Double>,
+    val markerSize: Double = 0.0,
+    val markerParams: Int = 0,
+    val residual: Double = 0.0
+) {
+    var markerNum = -1
+
+    fun getAsString(tabStr: String = "  ", level: Int = 0): String {
+        val outTabStr = getTabStr(tabStr, level)
+        var outStr = ""
+        outStr += "%s".format(outTabStr)
+        outStr += if (markerNum > -1) {
+            "%3d ".format(markerNum)
+        } else {
+            "    "
+        }
+        outStr += "Marker %7d".format(markerId)
+        outStr += " pos : [%3.2f, %3.2f, %3.2f] ".format(pos[0], pos[1], pos[2])
+        outStr += "       size=%3.2f".format(markerSize)
+        outStr += "       err=%3.2f".format(residual)
+        outStr += "        params=%d".format(markerParams)
+        outStr += "\n"
+        return outStr
+    }
+}
+
+class AssetRigidBodyData(
+    val idNum: Int,
+    val pos: ArrayList<Double>,
+    val rot: ArrayList<Double>,
+    val meanError: Double = 0.0,
+    val param: Int = 0
+) {
+    var rbNum = -1
+
+    fun getAsString(tabStr: String = "  ", level: Int = 0): String {
+        val outTabStr = getTabStr(tabStr, level)
+        var outStr = ""
+        outStr += "%sRigid Body :".format(outTabStr)
+        if (rbNum > -1) {
+            outStr += "%3d".format(rbNum)
+        }
+        outStr += "\n"
+        outStr += "%sID          : %d\n".format(outTabStr, idNum)
+        outStr += "%sPosition    : [%3.2f, %3.2f, %3.2f]\n".format(outTabStr, pos[0], pos[1], pos[2])
+        outStr += "%sOrientation : [%3.2f, %3.2f, %3.2f, %3.2f]\n".format(outTabStr, rot[0], rot[1], rot[2], rot[3])
+        outStr += "%sMean Error  : %3.2f\n".format(outTabStr, meanError)
+        outStr += "%sParams      : %3d\n".format(outTabStr, param)
+        return outStr
+    }
+}
+
+class Asset {
+    var assetId = 0
+    val rigidBodyList = arrayListOf<AssetRigidBodyData>()
+    val markerList = arrayListOf<AssetMarkerData>()
+
+    fun setId(newId: Int) {
+        assetId = newId
+    }
+
+    fun addRigidBody(rigidBody: AssetRigidBodyData): Int {
+        rigidBodyList.add(rigidBody)
+        return rigidBodyList.size
+    }
+
+    fun addMarker(marker: AssetMarkerData): Int {
+        markerList.add(marker)
+        return markerList.size
+    }
+
+    fun getRigidBodyCount(): Int {
+        return rigidBodyList.size
+    }
+
+    fun getMarkerCount(): Int {
+        return markerList.size
+    }
+
+    fun getAsString(tabStr: String = "  ", level: Int = 0): String {
+        val outTabStr = getTabStr(tabStr, level)
+        var outStr = ""
+        outStr += "%sAsset ID        : %d\n".format(outTabStr, assetId)
+        val rigidBodyCount = rigidBodyList.size
+        outStr += "%sRigid Body Count: %3d\n".format(outTabStr, rigidBodyCount)
+        for (rbNum in 0 until rigidBodyCount) {
+            rigidBodyList[rbNum].rbNum = rbNum
+            outStr += rigidBodyList[rbNum].getAsString(tabStr, level + 1)
+        }
+        val markerCount = markerList.size
+        outStr += "%sMarker Count: %3d\n".format(outTabStr, markerCount)
+        for (markerNum in 0 until markerCount) {
+            markerList[markerNum].markerNum = markerNum
+            outStr += markerList[markerNum].getAsString(tabStr, level + 1)
+        }
+        return outStr
+    }
+}
+
+class AssetData {
+    val assetList = arrayListOf<Asset>()
+
+    fun addAsset(newAsset: Asset) {
+        assetList.add(newAsset)
+    }
+
+    fun getAssetCount(): Int {
+        return assetList.size
+    }
+
+    fun getAsString(tabStr: String = "  ", level: Int = 0): String {
+        val outTabStr = getTabStr(tabStr, level)
+        val outTabStr2 = getTabStr(tabStr, level + 1)
+        var outStr = ""
+        val assetCount = getAssetCount()
+        outStr += "%sAsset Count: %3d\n".format(outTabStr, assetCount)
+        for (assetNum in 0 until assetCount) {
+            outStr += "%sAsset %3d\n".format(outTabStr2, assetNum)
+            outStr += assetList[assetNum].getAsString(tabStr, level + 2)
         }
         return outStr
     }
@@ -577,13 +729,94 @@ class DeviceData {
     }
 }
 
+class IMU(
+    val idNum: Int,
+    val pos: ArrayList<Double>,
+    val rot: ArrayList<Double>,
+    val params: Int = 0
+) {
+    fun getAsString(tabStr: String = "  ", level: Int = 0): String {
+        val outTabStr = getTabStr(tabStr, level)
+        var outStr = ""
+        outStr += "%sID: %d\n".format(outTabStr, idNum)
+        outStr += "%sPosition: [x:%3.1f, y:%3.1f, z:%3.1f]\n".format(outTabStr, pos[0], pos[1], pos[2])
+        outStr += "%sRotation: [qx:%3.2f, qy:%3.2f, qz:%3.2f, qw:%3.2f]\n".format(
+            outTabStr,
+            rot[0],
+            rot[1],
+            rot[2],
+            rot[3]
+        )
+        outStr += "%sParams: %d\n".format(outTabStr, params)
+        return outStr
+    }
+}
+
+class IMUData {
+    val imuList = arrayListOf<IMU>()
+
+    fun addImu(newImu: IMU) {
+        imuList.add(newImu)
+    }
+
+    fun getImuCount(): Int {
+        return imuList.size
+    }
+
+    fun getAsString(tabStr: String = "  ", level: Int = 0): String {
+        val outTabStr = getTabStr(tabStr, level)
+        val imuCount = getImuCount()
+        var outStr = "%sIMU Count: %3d\n".format(outTabStr, imuCount)
+        for (imuNum in 0 until imuCount) {
+            outStr += imuList[imuNum].getAsString(tabStr, level + 2)
+        }
+        return outStr
+    }
+}
+
+class GPIO(val idNum: Int, val portCount: Int, val gpioPinList: ArrayList<Int>) {
+    fun getAsString(tabStr: String = "  ", level: Int = 0): String {
+        val outTabStr = getTabStr(tabStr, level)
+        var outStr = "%sGPIO ID:  %d\n".format(outTabStr, idNum)
+        outStr += "%sPorts:  %3d\n".format(outTabStr, portCount)
+        for (i in 0 until gpioPinList.size) {
+            outStr += "%s Port %d: Value = %d\n".format(outTabStr, i, gpioPinList[i])
+        }
+        return outStr
+    }
+}
+
+class GPIOData {
+    val gpioList = arrayListOf<GPIO>()
+
+    fun addGpio(newGpio: GPIO) {
+        gpioList.add(newGpio)
+    }
+
+    fun getGpioCount(): Int {
+        return gpioList.size
+    }
+
+    fun getAsString(tabStr: String = "  ", level: Int = 0): String {
+        val outTabStr = getTabStr(tabStr, level)
+        val gpioCount = getGpioCount()
+        var outStr = "%sGPIO Count: %d\n".format(outTabStr, gpioCount)
+        for (gpioNum in 0 until gpioCount) {
+            outStr += gpioList[gpioNum].getAsString(tabStr, level + 2)
+        }
+        return outStr
+    }
+}
+
 class FrameSuffixData {
     var timecode = -1
     var timecodeSub = -1
     var timestamp = -1.0
     var stampCameraMidExposure: Long = -1
-    var stampDataReceived = -1
+    var stampDataReceived: Long = -1
     var stampTransmit: Long = -1
+    var precTimestampSecs = -1
+    var precTimestampFracSecs = -1
     var param = 0
     var isRecording = false
     var trackedModelsChanged = true
@@ -598,11 +831,20 @@ class FrameSuffixData {
         if (stampCameraMidExposure != (-1).toLong()) {
             outStr += "%sMid-exposure timestamp : %3d\n".format(outTabStr, stampCameraMidExposure)
         }
-        if (stampDataReceived != -1) {
+        if (stampDataReceived != (-1).toLong()) {
             outStr += "%sCamera data received timestamp : %3d\n".format(outTabStr, stampDataReceived)
         }
         if (stampTransmit != (-1).toLong()) {
             outStr += "%sTransmit timestamp : %3d\n".format(outTabStr, stampTransmit)
+        }
+        if (precTimestampSecs != -1) {
+            outStr += "%sPrecision timestamp (seconds) : %3d\n".format(outTabStr, precTimestampSecs)
+            if (precTimestampFracSecs != -1) {
+                outStr += "%sPrecision timestamp (fractional seconds) : %3d\n".format(
+                    outTabStr,
+                    precTimestampFracSecs
+                )
+            }
         }
         return outStr
     }
@@ -612,11 +854,15 @@ class MoCapData {
     // Packet Parts
     lateinit var prefixData: FramePrefixData
     lateinit var markerSetData: MarkerSetData
+    lateinit var legacyOtherMarkers: LegacyMarkerData
     lateinit var rigidBodyData: RigidBodyData
     lateinit var skeletonData: SkeletonData
+    lateinit var assetData: AssetData
     lateinit var labeledMarkerData: LabeledMarkerData
     lateinit var forcePlateData: ForcePlateData
     lateinit var deviceData: DeviceData
+    lateinit var imuData: IMUData
+    lateinit var gpioData: GPIOData
     lateinit var suffixData: FrameSuffixData
 
     fun getAsString(tabStr: String = "  ", level: Int = 0): String {
@@ -636,6 +882,11 @@ class MoCapData {
             "%sNo Marker Set Data Set\n".format(outTabStr)
         }
 
+        // Legacy Other Markers (only present when unpacked from a data packet)
+        if (::legacyOtherMarkers.isInitialized) {
+            outStr += legacyOtherMarkers.getAsString(tabStr, level + 1)
+        }
+
         outStr += if (::rigidBodyData.isInitialized) {
             rigidBodyData.getAsString(tabStr, level + 1)
         } else {
@@ -646,6 +897,11 @@ class MoCapData {
             skeletonData.getAsString(tabStr, level + 1)
         } else {
             "%sNo Skeleton Data Set\n".format(outTabStr)
+        }
+
+        // Asset Data (Motive 3.1/NatNet 4.1 and greater)
+        if (::assetData.isInitialized) {
+            outStr += assetData.getAsString(tabStr, level + 1)
         }
 
         outStr += if (::labeledMarkerData.isInitialized) {
@@ -664,6 +920,16 @@ class MoCapData {
             deviceData.getAsString(tabStr, level + 1)
         } else {
             "%sNo Device Data Set\n".format(outTabStr)
+        }
+
+        // IMU Data (NatNet 4.5 and greater)
+        if (::imuData.isInitialized) {
+            outStr += imuData.getAsString(tabStr, level + 1)
+        }
+
+        // GPIO Data (NatNet 4.5 and greater)
+        if (::gpioData.isInitialized) {
+            outStr += gpioData.getAsString(tabStr, level + 1)
         }
 
         outStr += if (::suffixData.isInitialized) {
@@ -864,10 +1130,35 @@ fun generateDeviceData(frameNum: Int = 0): DeviceData {
     return deviceData
 }
 
+fun generateImu(frameNum: Int = 0, imuNum: Int = 0): IMU {
+    val pos = generatePositionSrand(10000 + imuNum, frameNum)
+    val rot = arrayListOf(1.0, 0.0, 0.0, 0.0)
+    return IMU(imuNum, pos, rot, 0)
+}
+
+fun generateImuData(frameNum: Int = 0): IMUData {
+    val imuData = IMUData()
+    imuData.addImu(generateImu(frameNum, 0))
+    imuData.addImu(generateImu(frameNum, 2))
+    return imuData
+}
+
+fun generateGpio(frameNum: Int = 0, gpioNum: Int = 0): GPIO {
+    val gpioPinList = arrayListOf(0, 3, 4)
+    return GPIO(gpioNum + 1, gpioPinList.size, gpioPinList)
+}
+
+fun generateGpioData(frameNum: Int = 0): GPIOData {
+    val gpioData = GPIOData()
+    gpioData.addGpio(generateGpio(0))
+    gpioData.addGpio(generateGpio(2))
+    return gpioData
+}
+
 fun generateSuffixData(frameNum: Int = 0): FrameSuffixData {
     val frameSuffixData = FrameSuffixData()
     frameSuffixData.stampCameraMidExposure = 5844402979291 + frameNum
-    frameSuffixData.stampDataReceived = 0
+    frameSuffixData.stampDataReceived = 0L
     frameSuffixData.stampTransmit = 5844403268753 + frameNum
     frameSuffixData.timecode = 0
     frameSuffixData.timecodeSub = 0

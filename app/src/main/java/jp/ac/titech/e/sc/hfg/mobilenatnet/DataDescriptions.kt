@@ -139,6 +139,22 @@ private fun getDataSubPacketType(newData: Any?): String {
             outString = "Type: 5 Camera\n"
         }
 
+        is AssetDescription -> {
+            outString = "Type: 6 Asset\n"
+        }
+
+        is IMUDescription -> {
+            outString = "Type: 7 IMU\n"
+        }
+
+        is GPIODescription -> {
+            outString = "Type: 8 GPIO\n"
+        }
+
+        is AnchorDescription -> {
+            outString = "Type: 9 Anchor\n"
+        }
+
         null -> {
             outString = "Type: None\n"
         }
@@ -212,6 +228,9 @@ class RigidBodyDescription(
     var idNum = newId
     val rbMarkerList = arrayListOf<RBMarker>()
 
+    // Orientation offset (NatNet 4.2 and later)
+    var rot = arrayListOf(0.0, 0.0, 0.0, 1.0)
+
     fun setName(newName: String) {
         szName = newName
     }
@@ -226,6 +245,10 @@ class RigidBodyDescription(
 
     fun setPos(pX: Double, pY: Double, pZ: Double) {
         pos = arrayListOf(pX, pY, pZ)
+    }
+
+    fun setRot(qX: Double, qY: Double, qZ: Double, qW: Double) {
+        rot = arrayListOf(qX, qY, qZ, qW)
     }
 
     fun getNumMarkers(): Int {
@@ -478,6 +501,114 @@ class CameraDescription(val name: String, positionVec3: ArrayList<Double>, orien
     }
 }
 
+/** Anchor Description class (NatNet 4.5 and later) */
+class AnchorDescription(val name: String, positionVec3: ArrayList<Double>, val idNum: Int) {
+    val position = positionVec3
+
+    /** Get Anchor Description as a string */
+    fun getAsString(tabStr: String = "..", level: Int = 0): String {
+        val outTabStr = getTabStr(tabStr, level)
+        var outString = ""
+        outString += "%sName       : %s\n".format(outTabStr, name)
+        outString += "%sPosition   : [%3.2f, %3.2f, %3.2f]\n".format(outTabStr, position[0], position[1], position[2])
+        outString += "%sID         : %d \n".format(outTabStr, idNum)
+        return outString
+    }
+}
+
+/** Marker Description class (NatNet 4.1 and later, used in Asset Descriptions) */
+class MarkerDescription(
+    val name: String,
+    val markerId: Int,
+    val position: ArrayList<Double>,
+    val markerSize: Double,
+    val markerParams: Int
+) {
+    /** Get Marker Description as a string */
+    fun getAsString(tabStr: String = "..", level: Int = 0): String {
+        val outTabStr = getTabStr(tabStr, level)
+        var outString = ""
+        outString += "%sName        : %s\n".format(outTabStr, name)
+        outString += "%sID          : %d\n".format(outTabStr, markerId)
+        outString += "%sPosition    : [%3.2f, %3.2f, %3.2f]\n".format(outTabStr, position[0], position[1], position[2])
+        outString += "%sSize          : %3.2f\n".format(outTabStr, markerSize)
+        outString += "%sParams        : %d\n".format(outTabStr, markerParams)
+        return outString
+    }
+}
+
+/** Asset (trained markerset) Description class (NatNet 4.1 and later) */
+class AssetDescription(
+    val name: String,
+    val assetType: Int,
+    val assetId: Int,
+    val rigidBodyArray: ArrayList<RigidBodyDescription>,
+    val markerArray: ArrayList<MarkerDescription>
+) {
+    /** Get Asset Description as a string */
+    fun getAsString(tabStr: String = "..", level: Int = 0): String {
+        val outTabStr = getTabStr(tabStr, level)
+        var outString = ""
+        outString += "%sName       : %s\n".format(outTabStr, name)
+        outString += "%sType       : %d\n".format(outTabStr, assetType)
+        outString += "%sID         : %d\n".format(outTabStr, assetId)
+
+        outString += "%sRigidBody (Bone) Count : %d\n".format(outTabStr, rigidBodyArray.size)
+        for (rbCount in 0 until rigidBodyArray.size) {
+            outString += "%sRigidBody (Bone) %d:\n".format(outTabStr, rbCount)
+            outString += rigidBodyArray[rbCount].getAsString(tabStr, level + 1)
+        }
+
+        outString += "%sMarker Count : %d\n".format(outTabStr, markerArray.size)
+        for (markerCount in 0 until markerArray.size) {
+            outString += "%sMarker %d:\n".format(outTabStr, markerCount)
+            outString += markerArray[markerCount].getAsString(tabStr, level + 1)
+        }
+        return outString
+    }
+}
+
+/** IMU Description class (NatNet 4.5 and later) */
+class IMUDescription(
+    val name: String,
+    val imuId: Int,
+    val sensorFused: Int,
+    val rbId: Int
+) {
+    /** Get IMU Description as a string */
+    fun getAsString(tabStr: String = "..", level: Int = 0): String {
+        val outTabStr = getTabStr(tabStr, level)
+        var outString = ""
+        outString += "%sIMU Tag Name:   %s\n".format(outTabStr, name)
+        outString += "%sIMU ID:         %d\n".format(outTabStr, imuId)
+        outString += "%sSensor Fused:   %d\n".format(outTabStr, sensorFused)
+        outString += "%sRigid Body ID:  %d\n".format(outTabStr, rbId)
+        return outString
+    }
+}
+
+/** GPIO Description class (NatNet 4.5 and later) */
+class GPIODescription(
+    val name: String,
+    val gpioId: Int,
+    val portList: ArrayList<String> = arrayListOf()
+) {
+    val gpioCount = portList.size
+
+    /** Get GPIO Description as a string */
+    fun getAsString(tabStr: String = "..", level: Int = 0): String {
+        val outTabStr = getTabStr(tabStr, level)
+        var outString = ""
+        outString += "%sGPIO Name:      %s\n".format(outTabStr, name)
+        outString += "%sGPIO ID:        %d\n".format(outTabStr, gpioId)
+        outString += "%sGPIO Port Count:%d\n".format(outTabStr, gpioCount)
+        for (i in 0 until portList.size) {
+            outString += "%sGPIO Port %d: %s\n".format(outTabStr, i, portList[i])
+        }
+        return outString
+    }
+}
+
 // cDataDescriptions
 // Full data descriptions
 /** Data Descriptions class */
@@ -489,6 +620,10 @@ class DataDescriptions(var orderNum: Int = 0) {
     val forcePlateList = arrayListOf<ForcePlateDescription>()
     val deviceList = arrayListOf<DeviceDescription>()
     val cameraList = arrayListOf<CameraDescription>()
+    val assetList = arrayListOf<AssetDescription>()
+    val imuList = arrayListOf<IMUDescription>()
+    val gpioList = arrayListOf<GPIODescription>()
+    val anchorList = arrayListOf<AnchorDescription>()
 
     /** Generate the name for the order list based on the current length of the list */
     fun generateOrderName(): String {
@@ -563,6 +698,46 @@ class DataDescriptions(var orderNum: Int = 0) {
         cameraList.add(newCamera)
     }
 
+    /** Add a new asset */
+    fun addAsset(newAsset: AssetDescription) {
+        val orderName = generateOrderName()
+
+        // generate order entry
+        val pos = assetList.size
+        dataOrderDict[orderName] = Pair("asset_list", pos)
+        assetList.add(newAsset)
+    }
+
+    /** Add a new IMU */
+    fun addImu(newImu: IMUDescription) {
+        val orderName = generateOrderName()
+
+        // generate order entry
+        val pos = imuList.size
+        dataOrderDict[orderName] = Pair("imu_list", pos)
+        imuList.add(newImu)
+    }
+
+    /** Add a new GPIO */
+    fun addGpio(newGpio: GPIODescription) {
+        val orderName = generateOrderName()
+
+        // generate order entry
+        val pos = gpioList.size
+        dataOrderDict[orderName] = Pair("gpio_list", pos)
+        gpioList.add(newGpio)
+    }
+
+    /** Add a new anchor */
+    fun addAnchor(newAnchor: AnchorDescription) {
+        val orderName = generateOrderName()
+
+        // generate order entry
+        val pos = anchorList.size
+        dataOrderDict[orderName] = Pair("anchor_list", pos)
+        anchorList.add(newAnchor)
+    }
+
     /** Add data based on data type */
     fun addData(newData: Any?) {
         var dataType = newData?.javaClass
@@ -591,6 +766,22 @@ class DataDescriptions(var orderNum: Int = 0) {
                 addCamera(newData)
             }
 
+            is AssetDescription -> {
+                addAsset(newData)
+            }
+
+            is IMUDescription -> {
+                addImu(newData)
+            }
+
+            is GPIODescription -> {
+                addGpio(newData)
+            }
+
+            is AnchorDescription -> {
+                addAnchor(newData)
+            }
+
             null -> {
                 dataType = Unit.javaClass
             }
@@ -615,6 +806,14 @@ class DataDescriptions(var orderNum: Int = 0) {
             deviceList[posNum]
         } else if (listName == "camera_list" && posNum < cameraList.size) {
             cameraList[posNum]
+        } else if (listName == "asset_list" && posNum < assetList.size) {
+            assetList[posNum]
+        } else if (listName == "imu_list" && posNum < imuList.size) {
+            imuList[posNum]
+        } else if (listName == "gpio_list" && posNum < gpioList.size) {
+            gpioList[posNum]
+        } else if (listName == "anchor_list" && posNum < anchorList.size) {
+            anchorList[posNum]
         } else {
             null
         }
