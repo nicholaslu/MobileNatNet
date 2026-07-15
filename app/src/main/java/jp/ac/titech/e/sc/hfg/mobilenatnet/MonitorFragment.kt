@@ -17,6 +17,8 @@ import androidx.fragment.app.setFragmentResultListener
 import com.google.android.material.snackbar.Snackbar
 import jp.ac.titech.e.sc.hfg.mobilenatnet.R
 import jp.ac.titech.e.sc.hfg.mobilenatnet.databinding.FragmentMonitorBinding
+import kotlin.math.asin
+import kotlin.math.atan2
 
 
 /**
@@ -239,16 +241,29 @@ class MonitorFragment : Fragment() {
             return rigidBodyNameMap[id] ?: "Unknown"
         }
 
+        // NatNet quaternion [qx, qy, qz, qw] -> intrinsic ZYX Euler angles [roll, pitch, yaw] in degrees
+        private fun quaternionToEulerDegrees(q: ArrayList<Double>): DoubleArray {
+            val (qx, qy, qz) = q
+            val qw = q[3]
+            val roll = atan2(2 * (qw * qx + qy * qz), 1 - 2 * (qx * qx + qy * qy))
+            val pitch = asin((2 * (qw * qy - qz * qx)).coerceIn(-1.0, 1.0))
+            val yaw = atan2(2 * (qw * qz + qx * qy), 1 - 2 * (qy * qy + qz * qz))
+            return doubleArrayOf(
+                Math.toDegrees(roll), Math.toDegrees(pitch), Math.toDegrees(yaw)
+            )
+        }
+
         private fun showAsText() {
             var outStr = ""
             for (i in rigidBodyMap.keys) {
                 val data = rigidBodyMap[i]
                 data?.name = getNameFromId(i)
                 outStr += data?.let {
-                    "%s, id: %2d, position: %2.2f, %2.2f, %2.2f, rotation: %2.2f, %2.2f, %2.2f\n".format(
+                    val euler = quaternionToEulerDegrees(it.rot)
+                    "%s, id: %2d, position: %2.2f, %2.2f, %2.2f, rotation: %3.1f°, %3.1f°, %3.1f°\n".format(
                         it.name, it.id,
                         it.pos[0], it.pos[1], it.pos[2],
-                        it.rot[0], it.rot[1], it.rot[2]
+                        euler[0], euler[1], euler[2]
                     )
                 }
             }
