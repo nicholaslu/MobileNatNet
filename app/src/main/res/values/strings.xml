@@ -19,5 +19,8 @@
     <string name="about_app">A compact NatNet Android client</string>
     <string name="setting_fragment_label">Setting</string>
     <string name="monitor_fragment_label">Client</string>
+    <string name="no_setting">No IP setting found, go back and set it first</string>
+    <string name="already_connected">Client is already running</string>
+    <string name="connect_failed">Could not open NatNet sockets, check IP settings</string>
 
 </resources>

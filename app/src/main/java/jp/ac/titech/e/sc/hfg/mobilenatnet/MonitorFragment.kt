@@ -2,6 +2,8 @@ package jp.ac.titech.e.sc.hfg.mobilenatnet
 
 import DataDescriptions
 import NatNetClient
+import android.content.Context
+import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -27,18 +29,25 @@ class MonitorFragment : Fragment() {
     // This property is only valid between onCreateView and
     // onDestroyView.
     private val binding get() = _binding!!
-    private lateinit var natNetSetting: MainActivity.NatNetSetting
+    private var natNetSetting: MainActivity.NatNetSetting? = null
     private val rigidBodyText = RigidBodyText()
     private var rigidBodyNameMap = mutableMapOf<Int, String>()
+    private var streamingClient: NatNetClient? = null
+    private var multicastLock: WifiManager.MulticastLock? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        natNetSetting = savedInstanceState?.getParcelable(SETTING_KEY)
         // Use the Kotlin extension in the fragment-ktx artifact
         setFragmentResultListener("requestKey") { _, bundle ->
-            natNetSetting = bundle.getParcelable("bundleKey")!!
+            natNetSetting = bundle.getParcelable("bundleKey")
         }
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putParcelable(SETTING_KEY, natNetSetting)
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -56,24 +65,48 @@ class MonitorFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         binding.buttonStart.setOnClickListener {
-            val natNetClientThread = Thread {
-                val streamingClient = NatNetClient()
-                streamingClient.localIpAddress = natNetSetting.clientAddress
-                streamingClient.serverIpAddress = natNetSetting.serverAddress
-                streamingClient.useMulticast = natNetSetting.useMulticast
-                streamingClient.multicastAddress = natNetSetting.multicastAddress
-                streamingClient.rigidBodyListener = { id: Int, pos: ArrayList<Double>, rot: ArrayList<Double> ->
+            val setting = natNetSetting
+            if (setting == null) {
+                Snackbar.make(view, R.string.no_setting, Snackbar.LENGTH_LONG)
+                    .setAnchorView(R.id.fab).show()
+                return@setOnClickListener
+            }
+            if (streamingClient != null) {
+                Snackbar.make(view, R.string.already_connected, Snackbar.LENGTH_LONG)
+                    .setAnchorView(R.id.fab).show()
+                return@setOnClickListener
+            }
+            val client = NatNetClient()
+            streamingClient = client
+            if (setting.useMulticast) {
+                acquireMulticastLock()
+            }
+            Thread {
+                client.localIpAddress = setting.clientAddress
+                client.serverIpAddress = setting.serverAddress
+                client.useMulticast = setting.useMulticast
+                client.multicastAddress = setting.multicastAddress
+                client.rigidBodyListener = { id: Int, pos: ArrayList<Double>, rot: ArrayList<Double> ->
                         rigidBodyText.getRigidBody(id, pos, rot)
                 }
-                streamingClient.dataDescriptionsListener = { dataDescs: DataDescriptions ->
+                client.dataDescriptionsListener = { dataDescs: DataDescriptions ->
                     dataDescs.rigidBodyList.forEach { rigidBodyNameMap[it.idNum] = it.szName }
                     rigidBodyText.rigidBodyNameMap = rigidBodyNameMap
                 }
-                streamingClient.run()
+                if (!client.run()) {
+                    Handler(Looper.getMainLooper()).post {
+                        streamingClient = null
+                        releaseMulticastLock()
+                        _binding?.let {
+                            Snackbar.make(it.root, R.string.connect_failed, Snackbar.LENGTH_LONG)
+                                .setAnchorView(R.id.fab).show()
+                        }
+                    }
+                }
             }.start()
             Snackbar.make(
                 view,
-                "Connect with IP setting ${natNetSetting.clientAddress}, ${natNetSetting.serverAddress}, ${natNetSetting.multicastAddress}, use multicast: ${natNetSetting.useMulticast}",
+                "Connect with IP setting ${setting.clientAddress}, ${setting.serverAddress}, ${setting.multicastAddress}, use multicast: ${setting.useMulticast}",
                 Snackbar.LENGTH_LONG
             ).setAnchorView(R.id.fab).show()
         }
@@ -81,7 +114,44 @@ class MonitorFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        rigidBodyText.unbindTextView()
         _binding = null
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        val client = streamingClient
+        streamingClient = null
+        if (client != null) {
+            Thread {
+                try {
+                    client.shutdown()
+                } catch (e: Exception) {
+                    Log.w("NatNet", "Error while shutting down NatNet client", e)
+                }
+            }.start()
+        }
+        releaseMulticastLock()
+    }
+
+    private fun acquireMulticastLock() {
+        if (multicastLock == null) {
+            val wifiManager =
+                requireContext().applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            multicastLock = wifiManager.createMulticastLock("MobileNatNet").apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        }
+    }
+
+    private fun releaseMulticastLock() {
+        multicastLock?.let {
+            if (it.isHeld) {
+                it.release()
+            }
+        }
+        multicastLock = null
     }
 
     @OptIn(ExperimentalUnsignedTypes::class)
@@ -142,10 +212,15 @@ class MonitorFragment : Fragment() {
     class RigidBodyText {
         private var rigidBodyMap = mutableMapOf<Int, RigidBodyData>()
         var rigidBodyNameMap = mutableMapOf<Int, String>()
-        lateinit var text: TextView
+        private var text: TextView? = null
+        private val mainHandler = Handler(Looper.getMainLooper())
 
         fun bindTextView(textView: TextView) {
             text = textView
+        }
+
+        fun unbindTextView() {
+            text = null
         }
 
         fun getRigidBody(newId: Int, pos: ArrayList<Double>, rot: ArrayList<Double>) {
@@ -168,6 +243,7 @@ class MonitorFragment : Fragment() {
             var outStr = ""
             for (i in rigidBodyMap.keys) {
                 val data = rigidBodyMap[i]
+                data?.name = getNameFromId(i)
                 outStr += data?.let {
                     "%s, id: %2d, position: %2.2f, %2.2f, %2.2f, rotation: %2.2f, %2.2f, %2.2f\n".format(
                         it.name, it.id,
@@ -177,12 +253,11 @@ class MonitorFragment : Fragment() {
                 }
             }
             Log.d("NatNet", outStr.length.toString())
-            val mainHandler = Handler(Looper.getMainLooper())
-            try {
-                mainHandler.post { text.text = outStr }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            mainHandler.post { text?.text = outStr }
         }
+    }
+
+    companion object {
+        private const val SETTING_KEY = "natNetSetting"
     }
 }
